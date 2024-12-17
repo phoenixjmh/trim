@@ -1,0 +1,16 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-I",
+      "/usr/include/ffmpeg",
+      "-c",
+      "-o",
+      "main.o",
+      "main.cpp"
+    ],
+    "directory": "/home/phoenixjmh/proj/trim",
+    "file": "/home/phoenixjmh/proj/trim/main.cpp",
+    "output": "/home/phoenixjmh/proj/trim/main.o"
+  }
+]
