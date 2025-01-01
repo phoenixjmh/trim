@@ -1,5 +1,5 @@
 /build
-/vendor/
+/vendor/lib
 /res
 *.vcxproj
 *.filters
