@@ -5,31 +5,51 @@ set(CMAKE_CXX_STANDARD 14)
 # Hint: Helps CMake find packages
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
 
-add_subdirectory(lib/FFMpeg)
-add_subdirectory(lib/glfw)
 
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_subdirectory(vendor/lib/FFMpeg)
+add_subdirectory(vendor/lib/glfw)
+
+add_definitions(-DGL_SILENCE_DEPRECATION)
 
 list(APPEND SOURCES
         main.cpp
+        gui.cpp
+        video_operations.cpp
+
+        vendor/src/glad.c
+        vendor/src/imgui.cpp
+        vendor/src/imgui_demo.cpp
+        vendor/src/imgui_draw.cpp
+        vendor/src/imgui_impl_glfw.cpp
+        vendor/src/imgui_impl_opengl3.cpp
+        vendor/src/imgui_tables.cpp
+        vendor/src/imgui_widgets.cpp
 )
 
-add_executable(trim ${SOURCES})
+add_executable(trim  ${SOURCES})
 
+    list(APPEND EXTRA_LIBS
+        "-framework OpenGL"
+    )
 
-
-
-
-
-
-
-
-
-
-target_link_libraries(trim
-        FFMpeg
-        glfw
-        GLEW::GLEW
-        OpenGL::OpenGL
+target_include_directories(trim
+  PUBLIC
+  ${PROJECT_SOURCE_DIR}/vendor/include
 )
+
+
+
+
+
+target_link_libraries(trim FFmpeg glfw ${EXTRA_LIBS})
+
+
+
+
+
+
+
+
+

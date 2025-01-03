@@ -1,5 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include <glad/glad.h>
+#include "glad/glad.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <vector>
@@ -10,16 +10,25 @@
 #include <string>
 #include <sstream>
 #include <cstdio>
+#include <cmath>
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "gui.h"
 #include "range_slider.h"
+#include "glm/glm.hpp"
+#include "glm/ext.hpp"
+#include <cassert>
 extern "C" {
 #include <stdio.h>
+#include <unistd.h>
 };
 
+void glfwErrorCallback(int error, const char* description)
+{
+    std::cerr << "GLFW Error (" << error << "): " << description << std::endl;
+}
 
 GLFWwindow* InitGL()
 {
@@ -29,9 +38,9 @@ GLFWwindow* InitGL()
     GLuint shaderProgram, computeProgram, VBO, VAO, EBO, heightMapTexture, vertexSSBO;
 
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+    glfwSetErrorCallback(glfwErrorCallback);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
 
     window = glfwCreateWindow(1280, 720, "Trim", NULL, NULL);
@@ -53,6 +62,8 @@ GLFWwindow* InitGL()
             // Update the viewport to match the new framebuffer size
             glViewport(0, 0, width, height);
         });
+    
+
 
     return window;
 }
@@ -100,9 +111,104 @@ std::string CreateOutputFileName(const std::string& inFile)
     std::string newName = inFile.substr(0, dot_pos) + "_trimmed" + inFile.substr(dot_pos);
     return newName;
 }
+// === GL HELPERS ===
+GLuint VAO, VBO;
+glm::mat4 proj;
+
+
+unsigned int CreateShaderProgram()
+{
+
+  const char* vertShader = 
+      "#version 330 core\n"
+      "layout (location = 0) in vec2 aPos;\n"
+      "layout (location = 1) in vec2 aTexCoord;\n"
+      "out vec2 TexCoord;\n"
+      "uniform mat4 projection;\n"
+      "void main() {\n"
+      "    gl_Position = projection * vec4(aPos, 0.0, 1.0);\n"
+      "    TexCoord = aTexCoord;\n"
+      "}\n";
+
+  const char* fragShader = 
+      "#version 330 core\n"
+      "in vec2 TexCoord;\n"
+      "out vec4 FragColor;\n"
+      "uniform sampler2D tex;\n"
+      "void main() {\n"
+      "    FragColor = texture(tex, TexCoord);\n"
+      "}\n";
+
+    GLuint vert = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vert, 1, &vertShader, NULL);
+    glCompileShader(vert);
+    
+    GLuint frag = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(frag, 1, &fragShader, NULL);
+    glCompileShader(frag);
+    
+    unsigned int shader = glCreateProgram();
+    glAttachShader(shader, vert);
+    glAttachShader(shader, frag);
+    glLinkProgram(shader);
+    glDeleteShader(vert);
+    glDeleteShader(frag);
+    return shader;
+
+}
+
+void CreateVideoSurface(int windowW, int windowH, video_info& info) 
+{
+
+    float aspectRatio = (float)info.width_resolution / (float)info.height_resolution;
+    float minY = 0, maxY = render_window_height;
+    float frame_width = maxY * aspectRatio;
+    float minX = (render_window_width - frame_width) / 2;
+    float maxX = minX + frame_width;
+
+    float verts[] = 
+    {
+        minX, minY, 0.0f, 0.0f,  // x,y,u,v
+        maxX, minY, 1.0f, 0.0f,
+        maxX, maxY, 1.0f, 1.0f,
+        minX, minY, 0.0f, 0.0f,
+        maxX, maxY, 1.0f, 1.0f,
+        minX, maxY, 0.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+    
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    
+    proj = glm::ortho(0.0f, (float)windowW, (float)windowH, 0.0f, -1.0f, 1.0f);
+}
+
+
+void DrawVideoFrame(GLuint tex,unsigned int shader_program) 
+{
+    glUseProgram(shader_program);
+    glUniformMatrix4fv(glGetUniformLocation(shader_program, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+
 
 int main(int argc, char* argv[])
 {
+    char cwd[PATH_MAX];
+       if (getcwd(cwd, sizeof(cwd)) != NULL) {
+           printf("Current working dir: %s\n", cwd);
+       }
 
     if (argc < 2)
     {
@@ -127,14 +233,16 @@ int main(int argc, char* argv[])
 
     GLFWwindow* window = InitGL();
 
-    // Setup Dear ImGui context
 
     InitializeGUI(window);
     SetImGuiStyles();
 
+
     uint8_t* pixel_data;
 
     video_info info{};
+
+    
     
     if (!ReadVideoMetaData(input_file, info))
     {
@@ -143,21 +251,20 @@ int main(int argc, char* argv[])
 
     uint32_t* start_seek_time = new uint32_t(1);
     uint32_t* end_seek_time = new uint32_t(1);
-    pixel_data = static_cast<uint8_t*>(_aligned_malloc(info.width_resolution * info.height_resolution * 4, 128));
-    if (pixel_data == nullptr)
-    {
-        std::cerr << ("Couldn't allocate frame buffer\n");
-        return 1;
-    }
+    pixel_data = static_cast<uint8_t*>(malloc(info.width_resolution * info.height_resolution * 4));
+    
+    
+    
+    assert(pixel_data &&"Couldn't allocate framebuffer\n");
 
     if (!ReadFrame(input_file, pixel_data, *start_seek_time))
     {
         return -1;
     }
 
-    double pt_in_seconds = info.duration * (double)info.time_base.num / (double)info.time_base.den;
-    std::string human_time_duration = GetHumanTimeString(pt_in_seconds);
+    double duration_seconds = info.duration * (double)info.time_base.num / (double)info.time_base.den;
     *end_seek_time = info.duration;
+    std::string human_time_duration = GetHumanTimeString(duration_seconds);
 
 
 
@@ -169,6 +276,10 @@ int main(int argc, char* argv[])
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+
+    unsigned int shader=CreateShaderProgram();
+
 
     while (!glfwWindowShouldClose(window))
     {
@@ -189,7 +300,7 @@ int main(int argc, char* argv[])
             ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
 
             ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
-
+      
                      
             dock_height = ImGui::GetContentRegionAvail().y;
             dock_width = ImGui::GetContentRegionAvail().x;
@@ -287,11 +398,9 @@ int main(int argc, char* argv[])
 
 
 
-        //TODO: Add preview functionality. This will mean PLAYING the video and audio from point to point. This will be the hardest part I suspect.
 
 
 
-        //OLD SCHOOL NAUGHTY GL CAUSE LAZINESS
 
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, info.width_resolution, info.height_resolution, 0, GL_RGBA,
@@ -307,41 +416,12 @@ int main(int argc, char* argv[])
         render_window_width = windowW;
 
 
-
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, windowW, windowH, 0, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, hTex);
-        glBegin(GL_QUADS);
-
-
-        float aspectRatio = (float)info.width_resolution / (float)info.height_resolution;
-        minY = 0;
-        maxY = render_window_height;
-        int frame_width = maxY * aspectRatio;
-        minX = (render_window_width - frame_width) / 2;
-        maxX = minX + frame_width;
+        //Updating GL calls
+        CreateVideoSurface(windowW,windowH,info);
 
 
 
-        int quadPos[8] =
-        {
-            minX,minY,
-            maxX,minY,
-            maxX,maxY,
-            minX,maxY
-
-        };
-        {
-            glTexCoord2d(0, 0); glVertex2i(quadPos[0], quadPos[1]);
-            glTexCoord2d(1, 0); glVertex2i(quadPos[2], quadPos[3]);
-            glTexCoord2d(1, 1); glVertex2i(quadPos[4], quadPos[5]);
-            glTexCoord2d(0, 1); glVertex2i(quadPos[6], quadPos[7]);
-        }
-        glEnd();
-        glDisable(GL_TEXTURE_2D);
+        DrawVideoFrame(hTex,shader);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         ImGui::UpdatePlatformWindows();
