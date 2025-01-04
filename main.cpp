@@ -22,8 +22,50 @@
 #include <cassert>
 extern "C" {
 #include <stdio.h>
-#include <unistd.h>
+    //#include <unistd.h>
 };
+
+static int render_window_height;
+static int render_window_width;
+static  float minX, minY, maxX, maxY;
+static float aspectRatio;
+static float frame_width;
+static glm::mat4 model(1.0f);
+
+static int windowW, windowH;
+
+static std::string FFMPEG_OUTPUT_COMMAND;
+static char output_buffer[1024];
+
+bool renderFirstFrame = true;
+
+
+
+struct GUIState
+{
+    float dock_height;
+    float dock_width;
+    bool export_called = false;
+    bool output_string_built = false;
+    bool preview_output_command = false;
+    ImGui::RangeSliderChangeType trimSliderState;
+
+};
+
+struct SystemCallParameters
+{
+    uint32_t* trim_start;
+    uint32_t* trim_end;
+    char* input_file;
+    char* output_file;
+};
+
+
+video_info info{};
+
+
+void CreateVideoSurface(const video_info& info);
+void HandleVideoFrameResize(const video_info& info);
 
 void glfwErrorCallback(int error, const char* description)
 {
@@ -32,8 +74,6 @@ void glfwErrorCallback(int error, const char* description)
 
 GLFWwindow* InitGL()
 {
-
-
     GLFWwindow* window;
     GLuint shaderProgram, computeProgram, VBO, VAO, EBO, heightMapTexture, vertexSSBO;
 
@@ -59,27 +99,19 @@ GLFWwindow* InitGL()
     }
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height)
         {
-            // Update the viewport to match the new framebuffer size
             glViewport(0, 0, width, height);
+            HandleVideoFrameResize(info);
         });
-    
-
 
     return window;
 }
 
-
 std::string GetHumanTimeString(uint32_t time_seconds)
 {
-
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%d:%.2f", (int)floor((double)time_seconds / 60.0), std::floor(((((double)time_seconds / 60.0) - (floor(((double)time_seconds / 60.0)))) * 60) * 100.0) / 100.0);
     return{ buffer };
 }
-
-static int render_window_height;
-static int render_window_width;
-static  int minX, minY, maxX, maxY;
 
 int processFileName(const char* inFile, char* outFile)
 {
@@ -111,6 +143,11 @@ std::string CreateOutputFileName(const std::string& inFile)
     std::string newName = inFile.substr(0, dot_pos) + "_trimmed" + inFile.substr(dot_pos);
     return newName;
 }
+
+void HandleVideoFrameResize(const video_info& info)
+{
+    CreateVideoSurface(info);
+}
 // === GL HELPERS ===
 GLuint VAO, VBO;
 glm::mat4 proj;
@@ -119,34 +156,35 @@ glm::mat4 proj;
 unsigned int CreateShaderProgram()
 {
 
-  const char* vertShader = 
-      "#version 330 core\n"
-      "layout (location = 0) in vec2 aPos;\n"
-      "layout (location = 1) in vec2 aTexCoord;\n"
-      "out vec2 TexCoord;\n"
-      "uniform mat4 projection;\n"
-      "void main() {\n"
-      "    gl_Position = projection * vec4(aPos, 0.0, 1.0);\n"
-      "    TexCoord = aTexCoord;\n"
-      "}\n";
+    const char* vertShader =
+        "#version 330 core\n"
+        "layout (location = 0) in vec2 aPos;\n"
+        "layout (location = 1) in vec2 aTexCoord;\n"
+        "out vec2 TexCoord;\n"
+        "uniform mat4 projection;\n"
+        "uniform mat4 model;\n"
+        "void main() {\n"
+        "    gl_Position = projection * model * vec4(aPos, 0.0, 1.0);\n"
+        "    TexCoord = aTexCoord;\n"
+        "}\n";
 
-  const char* fragShader = 
-      "#version 330 core\n"
-      "in vec2 TexCoord;\n"
-      "out vec4 FragColor;\n"
-      "uniform sampler2D tex;\n"
-      "void main() {\n"
-      "    FragColor = texture(tex, TexCoord);\n"
-      "}\n";
+    const char* fragShader =
+        "#version 330 core\n"
+        "in vec2 TexCoord;\n"
+        "out vec4 FragColor;\n"
+        "uniform sampler2D tex;\n"
+        "void main() {\n"
+        "    FragColor = texture(tex, TexCoord);\n"
+        "}\n";
 
     GLuint vert = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vert, 1, &vertShader, NULL);
     glCompileShader(vert);
-    
+
     GLuint frag = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(frag, 1, &fragShader, NULL);
     glCompileShader(frag);
-    
+
     unsigned int shader = glCreateProgram();
     glAttachShader(shader, vert);
     glAttachShader(shader, frag);
@@ -156,17 +194,17 @@ unsigned int CreateShaderProgram()
     return shader;
 
 }
-
-void CreateVideoSurface(int windowW, int windowH, video_info& info) 
+//Create and Assign VAO for video frame
+// ( Called on init, and resize )
+void CreateVideoSurface(const video_info& info)
 {
+    aspectRatio = (float)info.width_resolution / (float)info.height_resolution;
+    minY = 0, maxY = render_window_height;
+    frame_width = maxY * aspectRatio;
+    minX = (render_window_width - frame_width) / 2;
+    maxX = minX + frame_width;
 
-    float aspectRatio = (float)info.width_resolution / (float)info.height_resolution;
-    float minY = 0, maxY = render_window_height;
-    float frame_width = maxY * aspectRatio;
-    float minX = (render_window_width - frame_width) / 2;
-    float maxX = minX + frame_width;
-
-    float verts[] = 
+    float verts[] =
     {
         minX, minY, 0.0f, 0.0f,  // x,y,u,v
         maxX, minY, 1.0f, 0.0f,
@@ -178,57 +216,193 @@ void CreateVideoSurface(int windowW, int windowH, video_info& info)
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
-    
+
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-    
+
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
-    
-    proj = glm::ortho(0.0f, (float)windowW, (float)windowH, 0.0f, -1.0f, 1.0f);
+
 }
 
 
-void DrawVideoFrame(GLuint tex,unsigned int shader_program) 
+void DrawVideoFrame(GLuint tex, unsigned int shader_program)
 {
     glUseProgram(shader_program);
     glUniformMatrix4fv(glGetUniformLocation(shader_program, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(glGetUniformLocation(shader_program, "model"), 1, GL_FALSE, glm::value_ptr(model));
     glBindTexture(GL_TEXTURE_2D, tex);
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 
-
-int main(int argc, char* argv[])
+void SendSystemCommand(const char* command)
 {
-    char cwd[PATH_MAX];
-       if (getcwd(cwd, sizeof(cwd)) != NULL) {
-           printf("Current working dir: %s\n", cwd);
-       }
+    int result = std::system(command);
 
-    if (argc < 2)
+    if (result == 0)
     {
-        PrintUsageError();
-        return 1;
+        std::cout << "Video trimmed successfully: " << std::endl;
     }
-    const char* input_file = argv[1];
-    char output_file[256];
-    if (argc > 2)
-        strcpy(output_file, argv[2]);
     else
     {
+        std::cerr << "Error: ffmpeg command failed with code " << result << std::endl;
+    }
+    std::cout << "The command entered was :\n\n" << command << "\n";
+   
+}
 
-        int response = processFileName(input_file, output_file);
-        if (response != 0)
-            return 1;
-        std::cout << "Trimmed video will be written to " << output_file<<"\n";
+void DisplayCommandEditor(char* output_buffer, GUIState& state)
+{
+    ImGui::OpenPopup("Edit Command");
+    if (ImGui::BeginPopupModal("Edit Command", nullptr, ImGuiWindowFlags_None))
+    {
+       
+        ImGui::InputTextMultiline("Final command", output_buffer, 1024, ImVec2(-1.0f, ImGui::GetTextLineHeight() * 16));
+        ImGui::Separator();
+
+        if (ImGui::Button("Finalize & Export", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+            state.preview_output_command = false;
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+
+
+void Export(const char* infile, const char* outfile,double start,double end,GUIState& state)
+{
+    if (!state.output_string_built)
+    {
+
+        FFMPEG_OUTPUT_COMMAND = "ffmpeg -accurate_seek -i  \"" + std::string(infile) +
+            "\" -ss " + GetHumanTimeString(start) +
+            " -to " + GetHumanTimeString(end) +
+            "  \"" + std::string(outfile) + "\"";
+
+        std::strncpy(output_buffer, FFMPEG_OUTPUT_COMMAND.c_str(), sizeof(output_buffer) - 1);
+        state.output_string_built= true;
+    }
+    if (state.preview_output_command)
+    {
+        DisplayCommandEditor(output_buffer,state);
+    }
+    else
+    {
+        SendSystemCommand(output_buffer);
+        exit(1);
+    }
+}
+
+
+
+void CreateGuiInterface(GUIState& guiState,SystemCallParameters& callParams,const video_info& info)
+{
+
+    auto startTimeSeconds = *callParams.trim_start * (double)info.time_base.num / (double)info.time_base.den;
+    auto endTimeSeconds = *callParams.trim_end* (double)info.time_base.num / (double)info.time_base.den;
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+    ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+
+    ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
+
+
+    guiState.dock_height = ImGui::GetContentRegionAvail().y;
+    guiState.dock_width = ImGui::GetContentRegionAvail().x;
+
+    ImGui::Text("Trim Range Selection");
+    ImGui::Separator();
+
+
+    float fullWidth = ImGui::GetContentRegionAvail().x;
+
+
+    ImGui::PushItemWidth(fullWidth);
+    ImGui::RangeSliderChangeType change_type =
+        ImGui::RangeSliderUInt("##TimeRange", callParams.trim_start, callParams.trim_end, 0, info.duration, "%.2f", 1);
+
+    ImGui::PopItemWidth();
+    ImGui::Text("Start Time: ");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", GetHumanTimeString(startTimeSeconds).c_str());
+
+    ImGui::SameLine(200);
+    ImGui::Text("End Time: ");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", GetHumanTimeString(endTimeSeconds).c_str());
+
+    
+    guiState.trimSliderState = change_type;
+   
+
+    ImGui::Separator();
+    ImGui::Checkbox("Preview output before export", &guiState.preview_output_command);
+    if (ImGui::Button("Export Video"))
+    {
+        guiState.export_called = true;
     }
 
+    if(guiState.export_called)
+    {
+        Export(callParams.input_file, callParams.output_file, startTimeSeconds, endTimeSeconds,guiState);
+    }
    
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Adjust the sliders and click Export to save the trimmed video.");
+    ImGui::End();
+    ImGui::Render();
+
+}
+
+
+
+struct args
+{
+    char* input_file;
+    char output_file[256];
+};
+
+bool ProcessArgs(int argc, char* argv[], args* outArgs)
+{
+    //TODO: if desired output_name already exists, the system freezes...
+    if (argc < 2 || argc>3)
+    {
+        PrintUsageError();
+        return false;
+    }
+    outArgs->input_file = argv[1];
+
+    if (argc > 2)
+        strcpy(outArgs->output_file, argv[2]);
+    else
+    {
+        int response = processFileName(outArgs->input_file, outArgs->output_file);
+        if (response != 0)
+            return false;
+        std::cout << "Trimmed video will be written to " << outArgs->output_file << "\n";
+    }
+    return true;
+}
+int main(int argc, char* argv[])
+{
+    args outArgs{};
+    if (!ProcessArgs(argc, argv, &outArgs))
+        return 1;
+
+    auto input_file = outArgs.input_file;
+    auto output_file = outArgs.output_file;
+
 
 
     GLFWwindow* window = InitGL();
@@ -238,32 +412,36 @@ int main(int argc, char* argv[])
     SetImGuiStyles();
 
 
-    uint8_t* pixel_data;
 
-    video_info info{};
-
-    
-    
-    if (!ReadVideoMetaData(input_file, info))
+    if (!ReadVideoMetaData(outArgs.input_file, info))
     {
         return -1;
     }
 
-    uint32_t* start_seek_time = new uint32_t(1);
-    uint32_t* end_seek_time = new uint32_t(1);
-    pixel_data = static_cast<uint8_t*>(malloc(info.width_resolution * info.height_resolution * 4));
+    uint8_t* pixel_data = static_cast<uint8_t*>(malloc(info.width_resolution * info.height_resolution * 4));
+    assert(pixel_data && "Couldn't allocate framebuffer\n");
     
-    
-    
-    assert(pixel_data &&"Couldn't allocate framebuffer\n");
+    SystemCallParameters callParams = {};
 
-    if (!ReadFrame(input_file, pixel_data, *start_seek_time))
+
+  
+   
+    callParams.trim_start= new uint32_t(1);
+    callParams.trim_end = new uint32_t(1);
+    callParams.input_file = input_file;
+    callParams.output_file = output_file;
+
+    //Read first frame
+    if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_start))
     {
         return -1;
     }
 
+
+    *callParams.trim_end = info.duration;
+
+    //Maybe for displaying the total duration of the trimmed video? IDK where i'm using this
     double duration_seconds = info.duration * (double)info.time_base.num / (double)info.time_base.den;
-    *end_seek_time = info.duration;
     std::string human_time_duration = GetHumanTimeString(duration_seconds);
 
 
@@ -277,129 +455,45 @@ int main(int argc, char* argv[])
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
+    unsigned int shader = CreateShaderProgram();
 
-    unsigned int shader=CreateShaderProgram();
 
+
+    glfwGetWindowSize(window, &windowW, &windowH);
+
+
+    
+
+    GUIState guiState = {};
+  
 
     while (!glfwWindowShouldClose(window))
     {
-        static float dock_width, dock_height;
+        CreateGuiInterface(guiState, callParams, info);
+        
+       
 
-
-        auto startTimeSeconds = *start_seek_time * (double)info.time_base.num / (double)info.time_base.den;
-        auto endTimeSeconds = *end_seek_time * (double)info.time_base.num / (double)info.time_base.den;
-          
-        //= GUI CODE ==//
+        switch (guiState.trimSliderState)
         {
+        case ImGui::RangeSliderChangeType::FIRST_VALUE_CHANGED:
 
-
-
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
-
-            ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
-      
-                     
-            dock_height = ImGui::GetContentRegionAvail().y;
-            dock_width = ImGui::GetContentRegionAvail().x;
-
-            ImGui::Text("Trim Range Selection");
-            ImGui::Separator();
-
-
-            float fullWidth = ImGui::GetContentRegionAvail().x;
-
-
-            ImGui::PushItemWidth(fullWidth);
-            ImGui::RangeSliderChangeType change_type =
-                ImGui::RangeSliderUInt("##TimeRange", start_seek_time, end_seek_time, 0, info.duration, "%.2f", 1);
-
-            ImGui::PopItemWidth();
-            ImGui::Text("Start Time: ");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", GetHumanTimeString(startTimeSeconds).c_str());
-
-            ImGui::SameLine(200);
-            ImGui::Text("End Time: ");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", GetHumanTimeString(endTimeSeconds).c_str());
-
-
-            switch (change_type)
+            if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_start))
             {
-            case ImGui::RangeSliderChangeType::FIRST_VALUE_CHANGED:
-
-                if (!ReadFrame(input_file, pixel_data, *start_seek_time))
-                {
-                    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error reading frame at start time!");
-                    exit(1);
-                }
-                break;
-            case ImGui::RangeSliderChangeType::SECOND_VALUE_CHANGED:
-
-                if (!ReadFrame(input_file, pixel_data, *end_seek_time))
-                {
-                    ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error reading frame at end time!");
-                    exit(1);
-                }
-                break;
-            default:
-                break;
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error reading frame at start time!");
+                exit(1);
             }
+            break;
+        case ImGui::RangeSliderChangeType::SECOND_VALUE_CHANGED:
 
-            ImGui::Separator();
-
-            if (ImGui::Button("Export Video"))
+            if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_end))
             {
-                
-                std::string command = "ffmpeg -i \"" + std::string(input_file) +
-                    "\" -ss " + GetHumanTimeString(startTimeSeconds) +
-                    " -to " + GetHumanTimeString(endTimeSeconds) +
-                    " -c copy \"" + std::string(output_file) + "\"";
-
-
-                int result = std::system(command.c_str());
-
-                if (result == 0)
-                {
-                    std::cout << "Video trimmed successfully: " << output_file << std::endl;
-                }
-                else
-                {
-                    std::cerr << "Error: ffmpeg command failed with code " << result << std::endl;
-                }
-                exit(0);
-
-                ImGui::OpenPopup("Export");
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error reading frame at end time!");
+                exit(1);
             }
-
-            if (ImGui::BeginPopupModal("Export", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-            {
-                ImGui::Text("Exporting your video...");
-                ImGui::Separator();
-                if (ImGui::Button("Close", ImVec2(120, 0)))
-                    ImGui::CloseCurrentPopup();
-                ImGui::EndPopup();
-            }
-
-
-            ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Adjust the sliders and click Export to save the trimmed video.");
-
-
-            ImGui::End();
-
-
-            ImGui::Render();
-
+            break;
+        default:
+            break;
         }
-
-
-
-
-
 
 
 
@@ -408,26 +502,25 @@ int main(int argc, char* argv[])
 
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
-        int windowW, windowH;
         glfwGetWindowSize(window, &windowW, &windowH);
 
 
-        render_window_height = windowH - dock_height;
+        render_window_height = windowH - guiState.dock_height;
         render_window_width = windowW;
 
-
-        //Updating GL calls
-        CreateVideoSurface(windowW,windowH,info);
-
-
-
-        DrawVideoFrame(hTex,shader);
+        proj = glm::ortho(0.0f, (float)windowW, (float)windowH, 0.0f, -1.0f, 1.0f);
+        if (renderFirstFrame)
+        {
+            CreateVideoSurface(info);
+            renderFirstFrame = false;
+        }
+            DrawVideoFrame(hTex, shader);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         ImGui::UpdatePlatformWindows();
         glfwSwapBuffers(window);
         glfwPollEvents();
-}
+    }
 }
 
 

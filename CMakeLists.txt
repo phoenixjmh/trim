@@ -8,8 +8,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_subdirectory(vendor/lib/FFMpeg)
-add_subdirectory(vendor/lib/glfw)
+add_subdirectory(lib/FFMpeg)
+add_subdirectory(lib/glfw)
 
 add_definitions(-DGL_SILENCE_DEPRECATION)
 
@@ -29,10 +29,14 @@ list(APPEND SOURCES
 )
 
 add_executable(trim  ${SOURCES})
-
+if(APPLE)
     list(APPEND EXTRA_LIBS
         "-framework OpenGL"
     )
+
+
+endif()
+
 
 target_include_directories(trim
   PUBLIC
