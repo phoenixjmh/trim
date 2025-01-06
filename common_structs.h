@@ -49,6 +49,7 @@ namespace GUI
         bool preview_output_command = false;
         bool display_editor_popup = false;
         SliderState sliderState;
+        bool precision_seek = false;
 
     };
 

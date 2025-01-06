@@ -26,11 +26,11 @@ struct AVStreamInfo
 
 bool OpenVideoStream(const char* input_file, AVStreamInfo& stream_info);
 
-bool ReadFrameFromOpenStream(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel_data);
+bool ReadFrameFromOpenStream(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel_data,bool precision_mode);
 
 void CloseVideoStream(AVStreamInfo& stream_info);
 
 void ReadVideoMetaData(const char* input_file, video_info& info);
 
-bool ReadFrame(const char* input_file, uint8_t* pixel_data,int64_t timestamp);
+//bool ReadFrame(const char* input_file, uint8_t* pixel_data,int64_t timestamp);
 

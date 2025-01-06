@@ -23,6 +23,7 @@ bool renderFirstFrame = true;
 
 video_info info{};
 
+
 int main(int argc, char* argv[])
 {
     SystemCallParameters callParams = {};
@@ -30,8 +31,8 @@ int main(int argc, char* argv[])
     callParams.trim_end = new uint32_t(1);
     ProcessArgs(argc, argv, callParams);
 
+    AVStreamInfo video_stream_info = {};
 
-    
 
     ReadVideoMetaData(callParams.input_file, info);
 
@@ -42,10 +43,6 @@ int main(int argc, char* argv[])
         std::cout << "Failed to allocate framebuffer!\n";
         exit(1);
     }
-
-
-
-
 
     *callParams.trim_end = info.duration;
 
@@ -58,10 +55,15 @@ int main(int argc, char* argv[])
     GUI::Initialize(window);
     GUI::SetStyles();
 
-    //Read first frame
-    if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_start))
+
+
+
+
+    if (!OpenVideoStream(callParams.input_file, video_stream_info))
     {
-        std::cout << "Error::Failed to read first frame\n";
+        LOGD("Big problemo");
+        CloseVideoStream(video_stream_info);
+        exit(1);
     }
 
     GLuint hTex;
@@ -75,16 +77,16 @@ int main(int argc, char* argv[])
 
     unsigned int shader = CreateShaderProgram();
 
-
-
     glfwGetWindowSize(window, &windowW, &windowH);
 
-
-
-
+    *callParams.trim_start = 0;
     GUI::GUIState guiState = {};
 
-
+    //Read first frame
+    if (!ReadFrameFromOpenStream(*callParams.trim_start, video_stream_info, pixel_data, guiState.precision_seek))
+    {
+        exit(1);
+    }
 
     while (!glfwWindowShouldClose(window))
     {
@@ -97,22 +99,36 @@ int main(int argc, char* argv[])
 
         switch (guiState.sliderState)
         {
-        case GUI::SliderState::FIRST_VALUE_CHANGED:
-
-            if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_start))
+            case GUI::SliderState::
+            FIRST_VALUE_CHANGED:
             {
-                exit(1);
+                if (!ReadFrameFromOpenStream(
+                    *callParams.trim_start, video_stream_info,
+                    pixel_data, guiState.precision_seek))
+                {
+                    LOGD("Failed to read frame with new method\n");
+                    CloseVideoStream(video_stream_info);
+                    exit(1);
+                }
+                break;
             }
-            break;
-        case GUI::SliderState::SECOND_VALUE_CHANGED:
-
-            if (!ReadFrame(callParams.input_file, pixel_data, *callParams.trim_end))
+            case GUI::SliderState::
+            SECOND_VALUE_CHANGED:
             {
-                exit(1);
+                if (!ReadFrameFromOpenStream(
+                    *callParams.trim_end, video_stream_info,
+                    pixel_data, guiState.precision_seek))
+                {
+                    LOGD("Failed to read frame with new method\n");
+                    CloseVideoStream(video_stream_info);
+                    exit(1);
+                }
+
+
+                break;
             }
-            break;
-        default:
-            break;
+            default:
+                break;
         }
 
 
@@ -140,6 +156,7 @@ int main(int argc, char* argv[])
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+    CloseVideoStream(video_stream_info);
 }
 
 void glfwErrorCallback(int error, const char* description)
@@ -315,7 +332,7 @@ void SendSystemCommand(const char* command)
 
 void Export(SystemCallParameters& callParams, GUI::GUIState& guiState)
 {
-    
+
     if (!guiState.output_string_built)
     {
         fs::path inPath = (callParams.input_file);
@@ -328,16 +345,16 @@ void Export(SystemCallParameters& callParams, GUI::GUIState& guiState)
 
             if (outPath == strippedFilename)
             {
-                LOGD( "Output file did not contain a path location::Output file will be placed in input directory");
+                LOGD("Output file did not contain a path location::Output file will be placed in input directory");
                 LOGD("Input directory: " << fs::absolute(inputFileDirectory.string()));
                 outPath = inputFileDirectory / strippedFilename;
                 LOGD("Full output path will be :" << fs::absolute(outPath).string());
-                
+
             }
             else
             {
                 LOGD("An output location was given\n");
-                
+
             }
 
         }
