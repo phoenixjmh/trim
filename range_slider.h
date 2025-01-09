@@ -213,8 +213,6 @@ namespace ImGui
 
         std::strncpy(value_buf,human_time_diff.c_str(),sizeof(value_buf)-1);
         value_buf[63]='\0';
-        std::cout<<v2_seconds<<"V2 SECONDS\n";
-        std::cout<<value_buf<<"\n";
 
         const char* value_buf_end = value_buf + sizeof(value_buf)-1;
         RenderTextClipped(frame_bb.Min, frame_bb.Max, value_buf, value_buf_end, NULL, ImVec2(0.5f, 0.5f));

@@ -10,7 +10,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-#add_subdirectory(lib/FFMpeg)
+add_subdirectory(lib/FFMpeg)
 
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
 
@@ -34,9 +34,9 @@ list(APPEND SOURCES
 )
 
 
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+#set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-set(CMAKE_INSTALL_RPATH "/home/phoenixjmh/proj/trim/lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/lib")
+#set(CMAKE_INSTALL_RPATH "/home/phoenixjmh/proj/trim/lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/lib")
 
 add_executable(trim  ${SOURCES})
 if(APPLE)
@@ -62,39 +62,12 @@ set(FFMPEG_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/FFMpeg/PlatformLinux/ffmpeg
 
 link_directories(${FFMPEG_LIB_PATH})
 # Include directories
-target_include_directories(trim
-  PUBLIC
-  ${PROJECT_SOURCE_DIR}/vendor/include
-  PUBLIC
-  lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/include
-  ${PROJECT_BINARY_DIR}
-  ${PROJECT_SOURCE_DIR}
-)
-message(STATUS "FFMPEG_LIB_PATH = ${FFMPEG_LIB_PATH}")
-message(STATUS "Linking libraries:")
-message(STATUS "avformat: ${FFMPEG_LIB_PATH}/libavformat.so")
-message(STATUS "avcodec: ${FFMPEG_LIB_PATH}/libavcodec.so")
-message(STATUS "avutil: ${FFMPEG_LIB_PATH}/libavutil.so")
-message(STATUS "swscale: ${FFMPEG_LIB_PATH}/libswscale.so")
-message(STATUS "swresample: ${FFMPEG_LIB_PATH}/libswresample.so")
-
-
 
 
 find_library(libswresample_path NAMES libswresample.so.5 PATHS "${FFMPEG_LIB_PATH}/")
-if(libswresample_path)
-    message("Found swresample")
-else()
-    message("FUCK!!!!!\n\n\n\n\n")
-endif()
 
 
 find_library(libavcodecpath NAMES libavcodec.so PATHS "/home/phoenixjmh/proj/trim/lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/lib/")
-if(libavcodecpath)
-    message("Found avcodec ")
-else()
-    message("FUCK!!!!!\n\n\n\n\n")
-endif()
 
 
 # Specify linker language
@@ -107,3 +80,16 @@ set_target_properties(trim PROPERTIES
     SKIP_INSTALL_RPATH FALSE  # Include rpath in the installed executable
 )
 endif()
+
+
+target_include_directories(trim
+  PUBLIC
+  ${PROJECT_SOURCE_DIR}/vendor/include
+  PUBLIC
+  lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/include
+  ${PROJECT_BINARY_DIR}
+  ${PROJECT_SOURCE_DIR}
+)
+
+
+target_link_libraries(trim glfw FFmpeg)

@@ -91,7 +91,6 @@ namespace GUI
         ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", GetHumanTimeString(callParams.endTimeSeconds).c_str());
 
 
-
         ImGui::Separator();
         ImGui::Checkbox("Preview output before export", &guiState.preview_output_command);
         if (ImGui::Button("Export Video"))
@@ -109,6 +108,11 @@ namespace GUI
 
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Adjust the sliders and click Export to save the trimmed video.");
+
+        auto io = ImGui::GetIO();
+        ImGui::Separator();
+        ImGui::Text(" %.3f ms/frame (%.1f FPS)",
+                  1000.0f / io.Framerate, io.Framerate);
         ImGui::End();
         ImGui::Render();
     }
@@ -159,20 +163,28 @@ namespace GUI
         static bool HighPrecision = false;
         static bool slider_value_change = false;
 
+        bool is_animating_slider=false;
+
         //Smooth animation indicating precision mode
         static float currentPadding = 5.0f;
         static float currentGrabSize = 20.0f;
         currentGrabSize = glm::mix(currentGrabSize, HighPrecision ? 5.0f : 20.0f, 0.15f);
         currentPadding = glm::mix(currentPadding, HighPrecision ? 10.0f : 5.0f, 0.15f);
         
-
+        //check animation state
+        if(currentGrabSize>6.0f && currentGrabSize<19.0f)
+          is_animating_slider=true;
         
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, currentPadding));  
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, currentGrabSize);                
 
         uint32_t display_time=callParams.trim_end-callParams.trim_start;
 
-        if (ImGui::RangeSliderUInt("Time Range", callParams.trim_start, callParams.trim_end, 0, info.duration, "%.2f", 1, change_type,info.time_base.num,info.time_base.den))
+        if (ImGui::RangeSliderUInt(
+            "Time Range",
+            callParams.trim_start, callParams.trim_end,
+            0, info.duration, "%.2f", 1,
+            change_type,info.time_base.num,info.time_base.den))
         {
             timeOfValueChange = ImGui::GetTime();
         }
@@ -202,7 +214,17 @@ namespace GUI
         ImGui::PopStyleVar(2);      // Restore padding and grab size
 
         guiState.sliderState = (SliderState)change_type;
-        guiState.precision_seek = HighPrecision;
+
+        if(!is_animating_slider && HighPrecision)
+        {
+          guiState.precision_seek=true;
+
+        }
+        else
+        {
+          guiState.precision_seek=false;
+        }
+
     }
 
 

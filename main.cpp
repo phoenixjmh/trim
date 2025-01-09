@@ -10,7 +10,7 @@ namespace fs = std::filesystem;
 // for each frame. This makes no sense. Whatever overhead this actually costs,
 // we don't want to incur this.
 // [ ]TODO: Clean up the cmake shit for SURE.
-
+// [ ]TODO: Make slider animation independent of framerate
 static int render_window_height;
 static int render_window_width;
 static float minX, minY, maxX, maxY;

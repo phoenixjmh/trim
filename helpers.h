@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <string>
     static std::string GetHumanTimeString(double time_seconds)
     {

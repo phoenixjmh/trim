@@ -8,3 +8,5 @@
 /res
 /build_debug
 
+/.cache
+.cache
