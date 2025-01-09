@@ -1,329 +1,358 @@
-#include "GL/glew.h"
-#include "GLFW/glfw3.h"
+#define _CRT_SECURE_NO_WARNINGS
+#include "trim.h"
+namespace fs = std::filesystem;
+// [x]TODO: Assign C++ 17 as the standard.
+// [ ]TODO: GUI: We need the dock to be already docked in when the program is
+// launched.
+// [ ]TODO: App: We're probably going to need playback for this to be viable for
+// actual editing.
+// [ ]TODO:PRIORITY: Fast seeking. We should not be closing and opening the input
+// for each frame. This makes no sense. Whatever overhead this actually costs,
+// we don't want to incur this.
+// [ ]TODO: Clean up the cmake shit for SURE.
+// [ ]TODO: Make slider animation independent of framerate
+static int render_window_height;
+static int render_window_width;
+static float minX, minY, maxX, maxY;
+static float aspectRatio;
+static float frame_width;
+static glm::mat4 model(1.0f);
 
-#include <iostream>
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/imgutils.h>
-#include <libswscale/swscale.h>
+static int windowW, windowH;
+
+static std::string FFMPEG_OUTPUT_COMMAND;
+GLuint VAO, VBO;
+glm::mat4 proj;
+
+bool renderFirstFrame = true;
+
+video_info info{};
+
+int main(int argc, char *argv[]) {
+  SystemCallParameters callParams = {};
+  callParams.trim_start = new uint32_t(1);
+  callParams.trim_end = new uint32_t(1);
+  ProcessArgs(argc, argv, callParams);
+
+  AVStreamInfo video_stream_info = {};
+
+  ReadVideoMetaData(callParams.input_file, info);
+
+  uint8_t *pixel_data = static_cast<uint8_t *>(
+      malloc(info.width_resolution * info.height_resolution * 4));
+  if (!pixel_data) {
+    std::cout << "Failed to allocate framebuffer!\n";
+    exit(1);
+  }
+
+  *callParams.trim_end = info.duration;
+
+  // Maybe for displaying the total duration of the trimmed video? IDK where i'm
+  // using this
+  double duration_seconds =
+      info.duration * (double)info.time_base.num / (double)info.time_base.den;
+  std::string human_time_duration = GetHumanTimeString(duration_seconds);
+
+  GLFWwindow *window = InitGL();
+
+  GUI::Initialize(window);
+  GUI::SetStyles();
+
+  if (!OpenVideoStream(callParams.input_file, video_stream_info)) {
+    LOGD("Big problemo");
+    CloseVideoStream(video_stream_info);
+    exit(1);
+  }
+
+  GLuint hTex;
+  glGenTextures(1, &hTex);
+  glBindTexture(GL_TEXTURE_2D, hTex);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+  unsigned int shader = CreateShaderProgram();
+
+  glfwGetWindowSize(window, &windowW, &windowH);
+
+  *callParams.trim_start = 0;
+  GUI::GUIState guiState = {};
+
+  // Read first frame
+  if (!ReadFrameFromOpenStream(*callParams.trim_start, video_stream_info,
+                               pixel_data, guiState.precision_seek)) {
+    LOGD("Failed to Read first frame!");
+    exit(1);
+  }
+
+  while (!glfwWindowShouldClose(window)) {
+    GUI::CreateInterface(guiState, callParams, info);
+
+    if (guiState.export_called) {
+      Export(callParams, guiState);
+    }
+
+    switch (guiState.sliderState) {
+    case GUI::SliderState::FIRST_VALUE_CHANGED: {
+      if (!ReadFrameFromOpenStream(*callParams.trim_start, video_stream_info,
+                                   pixel_data, guiState.precision_seek)) {
+        LOGD("Failed to read frame with new method\n");
+        CloseVideoStream(video_stream_info);
+        exit(1);
+      }
+      break;
+    }
+    case GUI::SliderState::SECOND_VALUE_CHANGED: {
+      if (!ReadFrameFromOpenStream(*callParams.trim_end, video_stream_info,
+                                   pixel_data, guiState.precision_seek)) {
+        LOGD("Failed to read frame with new method\n");
+        CloseVideoStream(video_stream_info);
+        exit(1);
+      }
+
+      break;
+    }
+    default:
+      break;
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, info.width_resolution,
+                 info.height_resolution, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 pixel_data);
+
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glfwGetWindowSize(window, &windowW, &windowH);
+
+    render_window_height = windowH - guiState.dock_height;
+    render_window_width = windowW;
+
+    proj = glm::ortho(0.0f, (float)windowW, (float)windowH, 0.0f, -1.0f, 1.0f);
+    if (renderFirstFrame) {
+      CreateVideoSurface(info);
+      renderFirstFrame = false;
+    }
+    DrawVideoFrame(hTex, shader);
+    GUI::Present();
+
+    glfwSwapBuffers(window);
+    glfwPollEvents();
+  }
+  CloseVideoStream(video_stream_info);
 }
 
-struct video_info
-{
-    int width_resolution;
-    int height_resolution;
-    uint32_t frame_count;
-};
-
-bool ReadVideoMetaData(const char *input_file, video_info &info)
-{
-    AVFormatContext *pFormatContext = avformat_alloc_context();
-    AVCodecContext *pCodecContext = nullptr;
-
-    if (avformat_open_input(&pFormatContext, input_file, NULL, NULL) != 0)
-    {
-        return false;
-    }
-    printf("Format %s, duration %ld us\n", pFormatContext->iformat->long_name, pFormatContext->duration);
-
-    avformat_find_stream_info(pFormatContext, NULL);
-
-    int video_stream_idx = -1;
-    for (int i = 0; i < pFormatContext->nb_streams; i++)
-    {
-        AVCodecParameters *pLocalCodecParameters = pFormatContext->streams[i]->codecpar;
-        const AVCodec *pLocalCodec = avcodec_find_decoder(pLocalCodecParameters->codec_id);
-        if (pLocalCodecParameters->codec_type == AVMEDIA_TYPE_VIDEO)
-        {
-            printf("Video Codec: resolution %d x %d\n", pLocalCodecParameters->width, pLocalCodecParameters->height);
-            video_stream_idx = i;
-            pCodecContext = avcodec_alloc_context3(pLocalCodec);
-            avcodec_parameters_to_context(pCodecContext, pLocalCodecParameters);
-            avcodec_open2(pCodecContext, pLocalCodec, NULL);
-        }
-    }
-    if (video_stream_idx == -1)
-    {
-        printf("Failed to find video stream\n");
-        return false;
-    }
-
-    //Get time base
-    auto tbase=pFormatContext->streams[video_stream_idx]->time_base;
-
-
-
-    AVPacket *pPacket = av_packet_alloc();
-    AVFrame *pFrame = av_frame_alloc();
-    if (!pPacket)
-    {
-        printf("Failed to allocate packet!");
-        return false;
-    }
-
-    while (av_read_frame(pFormatContext, pPacket) >= 0)
-    {
-        if (pPacket->stream_index != video_stream_idx)
-            continue;
-        avcodec_send_packet(pCodecContext, pPacket);
-        avcodec_receive_frame(pCodecContext, pFrame);
-
-        if (pCodecContext->frame_num == 1)
-        {
-            info.width_resolution = pFrame->width;
-            info.height_resolution = pFrame->height;
-            avformat_close_input(&pFormatContext);
-            avformat_free_context(pFormatContext);
-            av_frame_free(&pFrame);
-            av_packet_free(&pPacket);
-            avcodec_free_context(&pCodecContext);
-            break;
-        }
-    }
-
-
-    return true;
+void glfwErrorCallback(int error, const char *description) {
+  std::cerr << "GLFW Error (" << error << "): " << description << std::endl;
 }
 
-bool ReadFrame(const char *input_file, uint8_t **pixel_data, int frame_index)
-{
+GLFWwindow *InitGL() {
+  GLFWwindow *window;
+  GLuint shaderProgram, computeProgram, VBO, VAO, EBO, heightMapTexture,
+      vertexSSBO;
 
-    AVFormatContext *pFormatContext = avformat_alloc_context();
-    AVCodecContext *pCodecContext = nullptr;
+  glfwInit();
+  glfwSetErrorCallback(glfwErrorCallback);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
 
-    if (avformat_open_input(&pFormatContext, input_file, NULL, NULL) != 0)
-    {
-        return false;
-    }
+  window = glfwCreateWindow(1280, 720, "Trim", NULL, NULL);
+  if (window == NULL) {
+    std::cout << "Failed to create GLFW window" << std::endl;
+    glfwTerminate();
+    exit(-1);
+  }
+  glfwMakeContextCurrent(window);
 
-    avformat_find_stream_info(pFormatContext, NULL);
+  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    std::cout << "PROBLEM GL";
+    return nullptr;
+  }
+  glfwSetFramebufferSizeCallback(window,
+                                 [](GLFWwindow *window, int width, int height) {
+                                   glViewport(0, 0, width, height);
+                                   HandleVideoFrameResize(info);
+                                 });
 
-    int video_stream_idx = -1;
-    for (int i = 0; i < pFormatContext->nb_streams; i++)
-    {
-        if (pFormatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
-        {
-            video_stream_idx = i;
-            break;
-        }
-    }
-
-        if (video_stream_idx==-1)
-        {
-            exit(1);
-        }
-        auto& video_codec_parameters=pFormatContext->streams[video_stream_idx]->codecpar;
-
-        const AVCodec* pLocalCodec=avcodec_find_decoder(video_codec_parameters->codec_id);
-        pCodecContext = avcodec_alloc_context3(pLocalCodec);
-        if (!pCodecContext)
-        {
-            printf("Failed to allocate context!\n");
-            return false;
-        }
-        if (avcodec_parameters_to_context(pCodecContext, video_codec_parameters)<0)
-        {
-            printf("Couldn't initialize CodecContext\n");
-            return false;
-        }
-        if (avcodec_open2(pCodecContext, pLocalCodec, NULL)<0)
-        {
-            printf("Couldn't open codec\n");
-            return false;
-        }
-    AVPacket *pPacket = av_packet_alloc();
-    AVFrame *pFrame = av_frame_alloc();
-    if (!pPacket)
-    {
-        printf("Failed to allocate packet!\n");
-        return false;
-    }
-    if (!pFrame)
-    {
-        printf("Failed to allocate frame!\n");
-        return false;
-    }
-
-
-
-
-    //SEEK DESIRED FRAME
-
-    int response=0;
-    response=av_seek_frame(pFormatContext,video_stream_idx,8006999,AVSEEK_FLAG_BACKWARD);
-    if (response<0)
-    {
-        char err_buff[256];
-        av_make_error_string(err_buff,256,response);
-        printf("Error seeking frame =>%s",err_buff);
-    }
-    //ITERATE THROUGH FRAMES
-    while (av_read_frame(pFormatContext, pPacket) >= 0)
-    {
-        int response=0;
-        if (pPacket->stream_index != video_stream_idx)
-        {
-            av_packet_unref(pPacket);
-            continue;
-        }
-        response=avcodec_send_packet(pCodecContext, pPacket);
-        if (response<0)
-        {
-            char err_buff[256];
-            av_make_error_string(err_buff,256,response);
-            printf("Failed to decode packet => %s\n",err_buff);
-            av_packet_unref(pPacket);
-            continue;
-        }
-        response = avcodec_receive_frame(pCodecContext, pFrame);
-
-        if (response==AVERROR(EAGAIN)||response==AVERROR_EOF)
-        {
-            av_packet_unref(pPacket);
-            continue;
-        }
-        else if (response<0)
-        {
-            char err_buff[256];
-            av_make_error_string(err_buff,256,response);
-            printf("Failed to decode packet: => %s\n",err_buff);
-            continue;
-        }
-
-        //Presentation time stamp
-        //pFrame->pts
-            auto time_stamp=pFrame->pts;
-
-
-
-            std::cout<<"Time_stamp =>"<<time_stamp<<"\n";
-
-
-            SwsContext *sws_context =
-                sws_getContext(pFrame->width, pFrame->height, pCodecContext->pix_fmt, pFrame->width, pFrame->height,
-                               AV_PIX_FMT_RGB0, SWS_BILINEAR, NULL, NULL, NULL);
-
-            uint8_t *data = new uint8_t[pFrame->width * pFrame->height * 4];
-            uint8_t *dest[4] = {data, NULL, NULL, NULL};
-            const int dest_linesize[4] = {pFrame->width * 4, 0, 0, 0};
-
-            sws_scale(sws_context, pFrame->data, pFrame->linesize, 0, pFrame->height, dest, dest_linesize);
-
-            *pixel_data = data;
-            break;
-    }
-    avformat_close_input(&pFormatContext);
-    avformat_free_context(pFormatContext);
-    av_frame_free(&pFrame);
-    av_packet_free(&pPacket);
-    avcodec_free_context(&pCodecContext);
-    return true;
+  return window;
 }
 
-int main()
-{
+bool ProcessFilename(const char *inFile, char *outFile) {
 
-    GLFWwindow *window;
+  const char *dot = strrchr(inFile, '.');
+  if (!dot) {
+    std::cerr << "Input file must include extension\n";
+    return false;
+  }
 
-    if (!glfwInit())
-        return -1;
+  size_t nameLen = (size_t)(dot - inFile);
 
-    window = glfwCreateWindow(1280, 720, "Trim", NULL, NULL);
-    if (!window)
-    {
-        glfwTerminate();
-        return -1;
+  memcpy(outFile, inFile, nameLen);
+  memcpy(outFile + nameLen, "_trimmed", 8);
+  strcpy(outFile + nameLen + 8, dot);
+  return true;
+}
+
+void PrintUsageError() {
+  std::cerr << "Usage: trim <input_file> [output_file]\n"
+               "  input_file:  Required. The file to process ( must include "
+               "extension)\n"
+               "  output_file: Optional. The destination file (if omitted, "
+               "will be auto-generated)\n";
+}
+
+void HandleVideoFrameResize(const video_info &info) {
+  CreateVideoSurface(info);
+}
+
+unsigned int CreateShaderProgram() {
+
+  const char *vertShader =
+      "#version 330 core\n"
+      "layout (location = 0) in vec2 aPos;\n"
+      "layout (location = 1) in vec2 aTexCoord;\n"
+      "out vec2 TexCoord;\n"
+      "uniform mat4 projection;\n"
+      "uniform mat4 model;\n"
+      "void main() {\n"
+      "    gl_Position = projection * model * vec4(aPos, 0.0, 1.0);\n"
+      "    TexCoord = aTexCoord;\n"
+      "}\n";
+
+  const char *fragShader = "#version 330 core\n"
+                           "in vec2 TexCoord;\n"
+                           "out vec4 FragColor;\n"
+                           "uniform sampler2D tex;\n"
+                           "void main() {\n"
+                           "    FragColor = texture(tex, TexCoord);\n"
+                           "}\n";
+
+  GLuint vert = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vert, 1, &vertShader, NULL);
+  glCompileShader(vert);
+
+  GLuint frag = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(frag, 1, &fragShader, NULL);
+  glCompileShader(frag);
+
+  unsigned int shader = glCreateProgram();
+  glAttachShader(shader, vert);
+  glAttachShader(shader, frag);
+  glLinkProgram(shader);
+  glDeleteShader(vert);
+  glDeleteShader(frag);
+  return shader;
+}
+// Create and Assign VAO for video frame
+//  ( Called on init, and resize )
+void CreateVideoSurface(const video_info &info) {
+  aspectRatio = (float)info.width_resolution / (float)info.height_resolution;
+  minY = 0, maxY = render_window_height;
+  frame_width = maxY * aspectRatio;
+  minX = (render_window_width - frame_width) / 2;
+  maxX = minX + frame_width;
+
+  float verts[] = {minX, minY, 0.0f, 0.0f, // x,y,u,v
+                   maxX, minY, 1.0f, 0.0f, maxX, maxY, 1.0f, 1.0f, minX, minY,
+                   0.0f, 0.0f, maxX, maxY, 1.0f, 1.0f, minX, maxY, 0.0f, 1.0f};
+
+  glGenVertexArrays(1, &VAO);
+  glGenBuffers(1, &VBO);
+
+  glBindVertexArray(VAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                        (void *)(2 * sizeof(float)));
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+}
+
+void DrawVideoFrame(GLuint tex, unsigned int shader_program) {
+  glUseProgram(shader_program);
+  glUniformMatrix4fv(glGetUniformLocation(shader_program, "projection"), 1,
+                     GL_FALSE, glm::value_ptr(proj));
+  glUniformMatrix4fv(glGetUniformLocation(shader_program, "model"), 1, GL_FALSE,
+                     glm::value_ptr(model));
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glBindVertexArray(VAO);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void SendSystemCommand(const char *command) {
+  int result = std::system(command);
+
+  if (result == 0) {
+    std::cout << "Video trimmed successfully: " << std::endl;
+  } else {
+    std::cerr << "Error: ffmpeg command failed with code " << result
+              << std::endl;
+  }
+  std::cout << "The command entered was :\n\n" << command << "\n";
+}
+
+void Export(SystemCallParameters &callParams, GUI::GUIState &guiState) {
+
+  if (!guiState.output_string_built) {
+    fs::path inPath = (callParams.input_file);
+    fs::path inputFileDirectory = inPath.parent_path();
+    fs::path outPath = callParams.output_file;
+
+    if (callParams.custom_output_file) {
+      fs::path strippedFilename = outPath.filename();
+
+      if (outPath == strippedFilename) {
+        LOGD("Output file did not contain a path location::Output file will "
+             "be "
+             "placed in input directory");
+        LOGD("Input directory: " << fs::absolute(inputFileDirectory.string()));
+        outPath = inputFileDirectory / strippedFilename;
+        LOGD("Full output path will be :" << fs::absolute(outPath).string());
+
+      } else {
+        LOGD("An output location was given\n");
+      }
     }
-    glfwMakeContextCurrent(window);
 
-    GLenum err = glewInit();
-    if (GLEW_OK != err)
-    {
-        std::cerr << "Error => " << glewGetErrorString(err) << std::endl;
-        glfwTerminate();
-        return -1;
-    }
+    FFMPEG_OUTPUT_COMMAND =
+        "ffmpeg -accurate_seek -i  \"" +
+        fs::absolute(callParams.input_file).string() + "\" -ss " +
+        GetHumanTimeString(callParams.startTimeSeconds) + " -to " +
+        GetHumanTimeString(callParams.endTimeSeconds) + "  \"" +
+        fs::absolute(outPath).string() + "\"";
 
-    uint8_t *pixel_data;
+    std::strncpy(callParams.output_buffer, FFMPEG_OUTPUT_COMMAND.c_str(),
+                 sizeof(callParams.output_buffer) - 1);
+    guiState.output_string_built = true;
+  }
+  if (guiState.display_editor_popup)
+    return;
 
-    video_info info{};
-    static int frame_idx = 8000;
-    const char * input_file="../res/input3.mp4";
+  SendSystemCommand(callParams.output_buffer);
+  exit(1);
+}
 
-    if (!ReadVideoMetaData(input_file, info))
-    {
-        return -1;
-    }
-    if (posix_memalign((void**)&pixel_data, 128, info.width_resolution * info.height_resolution * 4) != 0) {
-        printf("Couldn't allocate frame buffer\n");
-        return 1;
-    }
+void ProcessArgs(int argc, char *argv[], SystemCallParameters &callParams) {
 
-  if (!ReadFrame(input_file, &pixel_data, frame_idx))
-        {
-            return -1;
-        }
+  if (argc < 2 || argc > 3) {
+    PrintUsageError();
+    exit(1);
+  }
+  std::strncpy(callParams.input_file, argv[1], MAX_PATH_BYTES - 1);
+  callParams.input_file[MAX_PATH_BYTES - 1] = '\0';
 
-
-
-    glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
-        if (action == GLFW_PRESS || action == GLFW_REPEAT)
-        {
-            if (key == GLFW_KEY_LEFT)
-            {
-                frame_idx--;
-            }
-            else if (key == GLFW_KEY_RIGHT)
-            {
-                frame_idx++;
-            }
-        }
-    });
-
-    while (!glfwWindowShouldClose(window))
-    {
-        if (frame_idx < 0)
-            frame_idx = 0;
-
-
-        GLuint hTex;
-        glGenTextures(1, &hTex);
-        glBindTexture(GL_TEXTURE_2D, hTex);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, info.width_resolution, info.height_resolution, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, pixel_data);
-
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        int windowW, windowH;
-        glfwGetWindowSize(window, &windowW, &windowH);
-
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, windowW, windowH, 0, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, hTex);
-        glBegin(GL_QUADS);
-        glTexCoord2d(0, 0);
-        glVertex2i(0, 0);
-        glTexCoord2d(1, 0);
-        glVertex2i(windowW, 0);
-        glTexCoord2d(1, 1);
-        glVertex2i(windowW, windowH);
-        glTexCoord2d(0, 1);
-        glVertex2i(0, windowH);
-        glEnd();
-        glDisable(GL_TEXTURE_2D);
-
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
+  if (argc > 2) {
+    std::strncpy(callParams.output_file, argv[2], MAX_PATH_BYTES - 1);
+    callParams.output_file[MAX_PATH_BYTES - 1] = '\0';
+    callParams.custom_output_file = true;
+  } else {
+    if (!ProcessFilename(callParams.input_file, callParams.output_file))
+      exit(1);
+    std::cout << "Trimmed video will be written to " << callParams.output_file
+              << "\n";
+  }
 }

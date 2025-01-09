@@ -1,0 +1,16 @@
+Target dependency graph (7 targets)
+ZERO_CHECK in trim, no dependencies
+glfw in trim, depends on:
+ZERO_CHECK in trim (explicit)
+trim in trim, depends on:
+ZERO_CHECK in trim (explicit)
+glfw in trim (explicit)
+ALL_BUILD in trim, depends on:
+ZERO_CHECK in trim (explicit)
+trim in trim (explicit)
+glfw in trim (explicit)
+install in trim, depends on:
+ALL_BUILD in trim (explicit)
+uninstall in trim, no dependencies
+update_mappings in trim, depends on:
+ZERO_CHECK in trim (explicit)
