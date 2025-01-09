@@ -6,3 +6,5 @@
 *.filters
 *.user
 /res
+/build_debug
+

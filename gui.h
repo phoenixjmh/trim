@@ -1,6 +1,7 @@
 #pragma once
 #include "video_operations.h"
 #include "common_structs.h"
+#include "helpers.h"
 //trim_start & trim_end : libav raw time stamp
 //startTimeSeconds & endTimeSeconds : raw time translated to seconds
 //output_buffer : The working buffer for the output command to ffmpeg
@@ -22,6 +23,4 @@ namespace GUI
     void Present();
 
 
-    std::string GetHumanTimeString(uint32_t time_seconds);
 }
-

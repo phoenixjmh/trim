@@ -11,6 +11,7 @@
 #include <glm/glm.hpp>
 #include <cmath>
 #include <iostream>
+#include "helpers.h"
 namespace GUI
 {
 
@@ -89,9 +90,6 @@ namespace GUI
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", GetHumanTimeString(callParams.endTimeSeconds).c_str());
 
-       
-
-        
 
 
         ImGui::Separator();
@@ -115,13 +113,7 @@ namespace GUI
         ImGui::Render();
     }
 
-    std::string GetHumanTimeString(uint32_t time_seconds)
-    {
-        char buffer[128];
-        snprintf(buffer, sizeof(buffer), "%d:%.2f", (int)floor((double)time_seconds / 60.0), std::floor(((((double)time_seconds / 60.0) - (floor(((double)time_seconds / 60.0)))) * 60) * 100.0) / 100.0);
-        return{ buffer };
-    }
-    
+
     void EditCommandPopup(GUIState& state, SystemCallParameters& callParams)
     {
         if (!state.display_editor_popup)
@@ -178,7 +170,9 @@ namespace GUI
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, currentPadding));  
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, currentGrabSize);                
 
-        if (ImGui::RangeSliderUInt("##TimeRange", callParams.trim_start, callParams.trim_end, 0, info.duration, "%.2f", 1, change_type))
+        uint32_t display_time=callParams.trim_end-callParams.trim_start;
+
+        if (ImGui::RangeSliderUInt("Time Range", callParams.trim_start, callParams.trim_end, 0, info.duration, "%.2f", 1, change_type,info.time_base.num,info.time_base.den))
         {
             timeOfValueChange = ImGui::GetTime();
         }

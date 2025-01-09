@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
+find_package(PkgConfig REQUIRED)
 project(FFmpeg)
 if(WIN32)
     # Set paths relative to this CMakeLists.txt location
@@ -25,25 +26,29 @@ if(WIN32)
 	file(COPY ${FFMPEG_DLLS} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/../../bin/Release")
 	
 else()
+# Set PKG_CONFIG_PATH to include the local FFmpeg pkgconfig directory
+#message("Building NOT for windows")
+#set(PKG_CONFIG_PATH_OLD $ENV{PKG_CONFIG_PATH})
+#set(ENV{PKG_CONFIG_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/PlatformLinux/ffmpeg_shared_linux/lib/pkgconfig:${PKG_CONFIG_PATH_OLD}")
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(AVCODEC     REQUIRED IMPORTED_TARGET libavcodec)
-pkg_check_modules(AVFORMAT    REQUIRED IMPORTED_TARGET libavformat)
-pkg_check_modules(AVFILTER    REQUIRED IMPORTED_TARGET libavfilter)
-pkg_check_modules(AVDEVICE    REQUIRED IMPORTED_TARGET libavdevice)
-pkg_check_modules(AVUTIL      REQUIRED IMPORTED_TARGET libavutil)
-pkg_check_modules(SWRESAMPLE  REQUIRED IMPORTED_TARGET libswresample)
-pkg_check_modules(SWSCALE     REQUIRED IMPORTED_TARGET libswscale)
+#pkg_check_modules(AVCODEC     REQUIRED IMPORTED_TARGET libavcodec)
+#pkg_check_modules(AVFORMAT    REQUIRED IMPORTED_TARGET libavformat)
+#pkg_check_modules(AVFILTER    REQUIRED IMPORTED_TARGET libavfilter)
+#pkg_check_modules(AVDEVICE    REQUIRED IMPORTED_TARGET libavdevice)
+#pkg_check_modules(AVUTIL      REQUIRED IMPORTED_TARGET libavutil)
+#pkg_check_modules(SWRESAMPLE  REQUIRED IMPORTED_TARGET libswresample)
+#pkg_check_modules(SWSCALE     REQUIRED IMPORTED_TARGET libswscale)
+#
+#add_library(FFmpeg INTERFACE IMPORTED GLOBAL)
+#
+#target_link_libraries(FFmpeg INTERFACE
+#    PkgConfig::AVCODEC
+#    PkgConfig::AVFORMAT
+#    PkgConfig::AVFILTER
+#    PkgConfig::AVDEVICE
+#    PkgConfig::AVUTIL
+#    PkgConfig::SWRESAMPLE
+#    PkgConfig::SWSCALE
+#)
 
-add_library(FFmpeg INTERFACE IMPORTED GLOBAL)
-
-target_link_libraries(FFmpeg INTERFACE
-    PkgConfig::AVCODEC
-    PkgConfig::AVFORMAT
-    PkgConfig::AVFILTER
-    PkgConfig::AVDEVICE
-    PkgConfig::AVUTIL
-    PkgConfig::SWRESAMPLE
-    PkgConfig::SWSCALE
-)
 endif()
