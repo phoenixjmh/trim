@@ -50,6 +50,27 @@ namespace GUI
 
   
 
+    void DockToBottom(ImGuiID dock_space)
+    {
+        static bool first_run = true;
+        if (first_run)
+        {
+            first_run = false;
+            ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::DockBuilderRemoveNode(dock_space);
+            ImGui::DockBuilderAddNode(dock_space, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_DockSpace);
+            ImGui::DockBuilderSetNodeSize(dock_space, viewport->Size);
+
+            // Split off the bottom section only
+            ImGuiID dock_bottom;
+            ImGui::DockBuilderSplitNode(dock_space, ImGuiDir_Down, 0.4f, &dock_bottom, &dock_space);
+
+            // Dock the Video Trimmer window
+            ImGui::DockBuilderDockWindow("Video Trimmer", dock_bottom);
+            ImGui::DockBuilderFinish(dock_space);
+        }
+    }
+
     void CreateInterface(GUIState& guiState, SystemCallParameters& callParams, const video_info& info)
     {
         callParams.startTimeSeconds = *callParams.trim_start * (double)info.time_base.num / (double)info.time_base.den;
@@ -58,7 +79,10 @@ namespace GUI
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+
+        ImGuiID dock_space=ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+        
+        DockToBottom(dock_space);
 
         ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
 

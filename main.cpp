@@ -2,15 +2,20 @@
 #include "trim.h"
 namespace fs = std::filesystem;
 // [x]TODO: Assign C++ 17 as the standard.
-// [ ]TODO: GUI: We need the dock to be already docked in when the program is
+// [x]TODO: Make slider animation independent of framerate
+// [x]TODO:PRIORITY: Fast seeking. We should not be closing and opening the input
+// [x]TODO: GUI: We need the dock to be already docked in when the program is
 // launched.
+// [ ]TODO: Fix our resizing functionality. Currently, the resize only works half the time, and sometimes the render frame is not sized correctly upon starting the program.
+// 
 // [ ]TODO: App: We're probably going to need playback for this to be viable for
 // actual editing.
-// [ ]TODO:PRIORITY: Fast seeking. We should not be closing and opening the input
 // for each frame. This makes no sense. Whatever overhead this actually costs,
 // we don't want to incur this.
 // [ ]TODO: Clean up the cmake shit for SURE.
-// [ ]TODO: Make slider animation independent of framerate
+
+// [ ]TODO: Remove all these static variables probably
+
 static int render_window_height;
 static int render_window_width;
 static float minX, minY, maxX, maxY;
