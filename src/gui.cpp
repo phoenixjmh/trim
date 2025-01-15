@@ -48,7 +48,7 @@ namespace GUI
         ImGui_ImplOpenGL3_Init();
     }
 
-  
+
 
     void DockToBottom(ImGuiID dock_space)
     {
@@ -73,18 +73,24 @@ namespace GUI
 
     void CreateInterface(GUIState& guiState, SystemCallParameters& callParams, const video_info& info)
     {
-        callParams.startTimeSeconds = *callParams.trim_start * (double)info.time_base.num / (double)info.time_base.den;
-        callParams.endTimeSeconds = *callParams.trim_end * (double)info.time_base.num / (double)info.time_base.den;
+        callParams.startTimeSeconds = *callParams.trim_start * (double)info.VideoTimeBase.num / (double)info.VideoTimeBase.den;
+        callParams.endTimeSeconds = *callParams.trim_end * (double)info.VideoTimeBase.num / (double)info.VideoTimeBase.den;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGuiID dock_space=ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
-        
+        ImGuiID dock_space = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+
         DockToBottom(dock_space);
 
         ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
+        if (ImGui::Button("Play", { 200,200 }))
+        {
+            guiState.play_pushed = !guiState.play_pushed;
+        }
+        ImGui::Text(GetHumanTimeString(guiState.playback_timestamp_seconds).c_str());
+
 
 
         guiState.dock_height = ImGui::GetContentRegionAvail().y;
@@ -100,10 +106,10 @@ namespace GUI
         ImGui::PushItemWidth(fullWidth);
 
 
-        TimelineSlider(callParams,guiState, info);
+        TimelineSlider(callParams, guiState, info);
 
-       
-//end behavior of range slider
+
+        //end behavior of range slider
         ImGui::PopItemWidth();
         ImGui::Text("Start Time: ");
         ImGui::SameLine();
@@ -136,7 +142,7 @@ namespace GUI
         auto io = ImGui::GetIO();
         ImGui::Separator();
         ImGui::Text(" %.3f ms/frame (%.1f FPS)",
-                  1000.0f / io.Framerate, io.Framerate);
+            1000.0f / io.Framerate, io.Framerate);
         ImGui::End();
         ImGui::Render();
     }
@@ -187,33 +193,33 @@ namespace GUI
         static bool HighPrecision = false;
         static bool slider_value_change = false;
 
-        bool is_animating_slider=false;
+        bool is_animating_slider = false;
 
         //Smooth animation indicating precision mode
         static float currentPadding = 5.0f;
         static float currentGrabSize = 20.0f;
         currentGrabSize = glm::mix(currentGrabSize, HighPrecision ? 5.0f : 20.0f, 0.15f);
         currentPadding = glm::mix(currentPadding, HighPrecision ? 10.0f : 5.0f, 0.15f);
-        
-        //check animation state
-        if(currentGrabSize>6.0f && currentGrabSize<19.0f)
-          is_animating_slider=true;
-        
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, currentPadding));  
-        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, currentGrabSize);                
 
-        uint32_t display_time=callParams.trim_end-callParams.trim_start;
+        //check animation state
+        if (currentGrabSize > 6.0f && currentGrabSize < 19.0f)
+            is_animating_slider = true;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, currentPadding));
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, currentGrabSize);
+
+        uint32_t display_time = callParams.trim_end - callParams.trim_start;
 
         if (ImGui::RangeSliderUInt(
             "Time Range",
             callParams.trim_start, callParams.trim_end,
             0, info.duration, "%.2f", 1,
-            change_type,info.time_base.num,info.time_base.den))
+            change_type, info.VideoTimeBase.num, info.VideoTimeBase.den))
         {
             timeOfValueChange = ImGui::GetTime();
         }
 
-        if(ImGui::IsItemActivated())
+        if (ImGui::IsItemActivated())
         {
             holdTimeSinceChange = 0;
             timeOfValueChange = ImGui::GetTime();
@@ -233,20 +239,20 @@ namespace GUI
             HighPrecision = false;
         }
 
-        
-        
+
+
         ImGui::PopStyleVar(2);      // Restore padding and grab size
 
         guiState.sliderState = (SliderState)change_type;
 
-        if(!is_animating_slider && HighPrecision)
+        if (!is_animating_slider && HighPrecision)
         {
-          guiState.precision_seek=true;
+            guiState.precision_seek = true;
 
         }
         else
         {
-          guiState.precision_seek=false;
+            guiState.precision_seek = false;
         }
 
     }

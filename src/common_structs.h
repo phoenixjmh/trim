@@ -50,7 +50,8 @@ namespace GUI
         bool display_editor_popup = false;
         SliderState sliderState;
         bool precision_seek = false;
-
+        bool play_pushed = false;
+        uint32_t playback_timestamp_seconds;
     };
 
 }
