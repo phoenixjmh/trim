@@ -10,3 +10,5 @@
 
 /.cache
 .cache
+lib/OpenAL/**
+lib/OpenAL/*.
