@@ -3,11 +3,12 @@
 namespace fs = std::filesystem;
 // [x]TODO: Assign C++ 17 as the standard.
 // [x]TODO: Make slider animation independent of framerate
-// [x]TODO:PRIORITY: Fast seeking. We should not be closing and opening the input
-// [x]TODO: GUI: We need the dock to be already docked in when the program is
-// launched.
-// [ ]TODO: Fix our resizing functionality. Currently, the resize only works half the time, and sometimes the render frame is not sized correctly upon starting the program.
-// 
+// [x]TODO:PRIORITY: Fast seeking. We should not be closing and opening the
+// input [x]TODO: GUI: We need the dock to be already docked in when the program
+// is launched. [ ]TODO: Fix our resizing functionality. Currently, the resize
+// only works half the time, and sometimes the render frame is not sized
+// correctly upon starting the program.
+//
 // [ ]TODO: App: We're probably going to need playback for this to be viable for
 // actual editing.
 // for each frame. This makes no sense. Whatever overhead this actually costs,
@@ -34,6 +35,8 @@ bool renderFirstFrame = true;
 video_info info{};
 
 int main(int argc, char *argv[]) {
+    std::filesystem::path wd = std::filesystem::current_path();
+    std::cout<<"PATH:"<<wd.string()<<"\n";
   SystemCallParameters callParams = {};
   callParams.trim_start = new uint32_t(1);
   callParams.trim_end = new uint32_t(1);
@@ -45,7 +48,8 @@ int main(int argc, char *argv[]) {
 
   uint8_t *pixel_data = static_cast<uint8_t *>(
       malloc(info.width_resolution * info.height_resolution * 4));
-  if (!pixel_data) {
+  if (!pixel_data) 
+  {
     std::cout << "Failed to allocate framebuffer!\n";
     exit(1);
   }
@@ -148,7 +152,8 @@ int main(int argc, char *argv[]) {
   CloseVideoStream(video_stream_info);
 }
 
-void glfwErrorCallback(int error, const char *description) {
+void glfwErrorCallback(int error, const char *description) 
+{
   std::cerr << "GLFW Error (" << error << "): " << description << std::endl;
 }
 
