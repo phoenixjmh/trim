@@ -17,3 +17,5 @@ lib/OpenAL
 **.sh
 xbin/
 .DS_Store/
+*.bat
+compile_commands.json
