@@ -85,16 +85,20 @@ namespace GUI
         DockToBottom(dock_space);
 
         ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
-        if (ImGui::Button("Play", { 200,200 }))
+        guiState.dock_width = ImGui::GetWindowWidth();
+        guiState.dock_height = ImGui::GetContentRegionAvail().y;
+        
+        if (ImGui::Button("Play", { 50,30 }))
         {
             guiState.play_pushed = !guiState.play_pushed;
         }
-        ImGui::Text(GetHumanTimeString(guiState.playback_timestamp_seconds).c_str());
+        ImGui::SameLine();
+        ImGui::Text("Time slip %0.3f",guiState.video_audio_time_difference);
+        ImGui::Text("%s",GetHumanTimeString(guiState.playback_timestamp_seconds).c_str());
 
 
 
-        guiState.dock_height = ImGui::GetContentRegionAvail().y;
-        guiState.dock_width = ImGui::GetContentRegionAvail().x;
+        
 
         ImGui::Text("Trim Range Selection");
         ImGui::Separator();

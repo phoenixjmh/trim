@@ -1,12 +1,7 @@
 #include "video_operations.h"
 #include <iostream>
 #include <thread>
-#define AV_CHECK(x, s) \
-    if (x < 0)         \
-    {                  \
-        LOGERROR(s);   \
-        return false;  \
-    }
+
 
 #define AV_CHECK(x, s)    \
     do                    \
@@ -25,20 +20,6 @@
         exit(1);        \
     }
 
-#define SKIP_VFRAME()              \
-    {                             \
-        av_packet_unref(stream_info.VideoPacket); \
-        av_frame_unref(stream_info.VideoFrame);   \
-        continue;                 \
-    }
-
-#define SKIP_AFRAME()              \
-    {                             \
-        av_packet_unref(stream_info.AudioPacket); \
-        av_frame_unref(stream_info.AudioFrame);   \
-        continue;                 \
-    }
-
 #define SKIP_FRAME()              \
     {                             \
         av_packet_unref(Packet); \
@@ -47,18 +28,12 @@
     }
 
 
-#define SKIP_VFRAME()              \
-    {                             \
-        av_packet_unref(Packet); \
-        av_frame_unref(Frame);   \
-        skips++;                   \
-        continue;                 \
-    }
 
 
 int skips = 0;
 void ReadVideoMetaData(const char* input_file, video_info& info)
 {
+//    av_log_set_level(AV_LOG_DEBUG);
     AVFormatContext* pFormatContext = avformat_alloc_context();
     AVCodecContext* pCodecContext = nullptr;
 
@@ -100,6 +75,7 @@ void ReadVideoMetaData(const char* input_file, video_info& info)
     AVCodecParameters* c_params = video_stream->codecpar;
 
     // Fill out video_info struct
+    if(audio_stream_idx!=-1)
     info.AudioTimeBase = audio_stream->time_base;
     info.VideoTimeBase = video_stream->time_base;
     info.frame_rate = video_stream->r_frame_rate;
@@ -111,12 +87,12 @@ void ReadVideoMetaData(const char* input_file, video_info& info)
     avformat_free_context(pFormatContext);
 }
 
-const char* GetAVError(int response)
+void PrintAVError(int response,const char* message)
 {
-    char err_buff[256];
-    av_make_error_string(err_buff, 256, response);
-    printf("Error %s", err_buff);
-    return err_buff;
+    char buffer[256];
+    av_make_error_string(buffer, 256, response);
+    std::cout<<message << " => "<<buffer<<"\n";
+    
 }
 
 bool OpenVideoStream(const char* input_file, AVStreamInfo& stream_info)
@@ -245,13 +221,14 @@ bool OpenAudioStream(const char* input_file, AVStreamInfo& stream_info)
 
 static SwsContext* sws_context;
 static bool first_run = true;
-void ReadNextVideoFrame(int timestamp,int allowable_slip,bool& got_frame, AVStreamInfo& stream_info, uint8_t* pixel_data)
+void ReadNextVideoFrame(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel_data)
 {
     int response;
     auto FormatContext = stream_info.VideoFormatContext;
     auto CodecContext = stream_info.VideoCodecContext;
     auto Packet = stream_info.VideoPacket;
     auto Frame = stream_info.VideoFrame;
+    char err_buff[256];
 
 
     while (av_read_frame(FormatContext, Packet) >= 0)
@@ -270,8 +247,7 @@ void ReadNextVideoFrame(int timestamp,int allowable_slip,bool& got_frame, AVStre
       
         if (response < 0)
         {
-
-            std::cerr << "Failed to send packet => " << GetAVError(response) << "\n";
+            PrintAVError(response,"Failed to send packet");
             SKIP_FRAME();
         }
        
@@ -284,8 +260,7 @@ void ReadNextVideoFrame(int timestamp,int allowable_slip,bool& got_frame, AVStre
         if (response < 0)
         {
 
-            std::cerr << "Failed to recieve frame: => " << GetAVError(response)
-                << "\n";
+            PrintAVError(response, "Failed to recieve frame");
             SKIP_FRAME();
         }
         if (Frame->pts == AV_NOPTS_VALUE)
@@ -294,10 +269,6 @@ void ReadNextVideoFrame(int timestamp,int allowable_slip,bool& got_frame, AVStre
             SKIP_FRAME();
         }
         //FRAME IS VALID
-       
-
-
-
 
         stream_info.current_timestamp = Frame->pts;
         if(Frame->pts<timestamp)
@@ -343,23 +314,23 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
 
     // Get the closest keyframe for decoding purposes. Save the timestamp, and
     // nudge up to it
-    CodecContext->thread_count = std::thread::hardware_concurrency();
-    CodecContext->thread_type = FF_THREAD_FRAME;
+    //CodecContext->thread_count = std::thread::hardware_concurrency();
+    //CodecContext->thread_type = FF_THREAD_FRAME;
     // Clear decoder state before seeking
     avcodec_flush_buffers(CodecContext);
 
     // Add SEEK_FLAG_FRAME to help find clean entry points
     response =
         av_seek_frame(FormatContext, stream_info.VideoStreamIndex,
-            timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_ANY);
+            timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);
     /*av_seek_frame(FormatContext, stream_info.VideoStreamIndex,
                   timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);*/
 
 
     if (response < 0)
     {
-        std::cerr << "Error seeking frame =>" << GetAVError(response);
-        exit(1);
+        PrintAVError(response,"Error seeking frame");
+        return false;
     }
     while (av_read_frame(FormatContext, Packet) >= 0)
     {
@@ -376,7 +347,7 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
         if (response < 0)
         {
             avcodec_flush_buffers(CodecContext);
-            std::cerr << "Failed to send packet => " << GetAVError(response) << "\n";
+            PrintAVError(response,"Failed to send packet");
             SKIP_FRAME();
         }
         response = avcodec_receive_frame(CodecContext, Frame);
@@ -388,8 +359,7 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
         if (response < 0)
         {
             avcodec_flush_buffers(CodecContext);
-            std::cerr << "Failed to recieve frame: => " << GetAVError(response)
-                << "\n";
+            PrintAVError(response,"Failed to recieve frame");
             SKIP_FRAME();
         }
 
@@ -419,7 +389,6 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
 
         break;
     }
-    printf("Skipped %d frames to get to timestamp\n", skips);
     skips = 0;
     stream_info.last_video_pts = Frame->pts;
 
@@ -448,7 +417,7 @@ int ReadInitialAudioFrame(int timestamp, AVStreamInfo& stream_info, int16_t* aud
 
     if (response < 0)
     {
-        std::cerr << "Error seeking frame=>" << GetAVError(response);
+        PrintAVError(response,"Error seeking frame");
         exit(1);
     }
 
@@ -543,7 +512,6 @@ int ReadInitialAudioFrame(int timestamp, AVStreamInfo& stream_info, int16_t* aud
     av_packet_unref(Packet);
     av_frame_free(&Frame);
     av_packet_free(&Packet);
-    std::cout << "Last frame read index: " << last_frame_read << "\n";
 
     return samples_read;
 }
@@ -565,7 +533,7 @@ int16_t* ReadNextAudioFrame(AVStreamInfo& stream_info, bool precision_mode)
 
     if (response < 0)
     {
-        std::cerr << "Error seeking frame=>" << GetAVError(response);
+        PrintAVError(response,"Error seeking frame");
         exit(1);
     }
 

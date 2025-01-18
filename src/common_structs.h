@@ -51,7 +51,8 @@ namespace GUI
         SliderState sliderState;
         bool precision_seek = false;
         bool play_pushed = false;
-        uint32_t playback_timestamp_seconds;
+        double playback_timestamp_seconds;
+        double video_audio_time_difference=0;
     };
 
 }

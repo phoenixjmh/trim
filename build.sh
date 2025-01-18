@@ -1,1 +1,1 @@
-xcodebuild -project bin/trim.xcodeproj -target trim
+xcodebuild -project ~/proj/trim/bin/trim.xcodeproj -target trim

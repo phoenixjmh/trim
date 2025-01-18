@@ -48,7 +48,7 @@ bool OpenAudioStream(const char* input_file, AVStreamInfo& stream_info);
 
 bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel_data,bool precision_mode);
 
-void ReadNextVideoFrame(int timestamp,int allowable_slip,bool& got_frame,AVStreamInfo& stream_info, uint8_t* pixel_data);
+void ReadNextVideoFrame(int timestamp,AVStreamInfo& stream_info, uint8_t* pixel_data);
 
 int ReadInitialAudioFrame(int timestamp, AVStreamInfo &stream_info, int16_t *audio_data, bool precision_mode = true);
 int16_t* ReadNextAudioFrame(AVStreamInfo& stream_info,bool precision_mode=true);

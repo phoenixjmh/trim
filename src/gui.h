@@ -2,18 +2,11 @@
 #include "video_operations.h"
 #include "common_structs.h"
 #include "helpers.h"
-//trim_start & trim_end : libav raw time stamp
-//startTimeSeconds & endTimeSeconds : raw time translated to seconds
-//output_buffer : The working buffer for the output command to ffmpeg
-
-
+#include "gl_includes.h"
 
 
 namespace GUI
 {
-   
-  
-   
    
     void Initialize(GLFWwindow* window);
     void SetStyles();

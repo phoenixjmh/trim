@@ -8,11 +8,31 @@ project(trim C CXX)
 # Hint: Helps CMake find packages
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
 
+set (CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g") 
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
 
 
-add_subdirectory(lib/FFMpeg)
+
+add_subdirectory(lib/FFMpeg EXCLUDE_FROM_ALL)
+
+
+
+set(ALSOFT_REQUIRE_REBUILD_VERSION FALSE CACHE BOOL "Force version.h rebuild" FORCE)
+add_subdirectory(lib/OpenAL EXCLUDE_FROM_ALL)
+
+
+if(TARGET alsoft.build_version)
+          message("OH THATS JUST GREAT")
+    set_target_properties(alsoft.build_version PROPERTIES
+        EXCLUDE_FROM_DEFAULT_BUILD TRUE
+        EXCLUDE_FROM_ALL TRUE)
+endif()
+
+
 
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+
 
 add_subdirectory(lib/glfw)
 
@@ -111,7 +131,13 @@ target_include_directories(trim
 )
 
 
-target_link_libraries(trim glfw FFmpeg ${OPEN_AL_LIB_PATH}/OpenAL32.lib)
+target_link_libraries(
+      trim
+      glfw
+      FFmpeg
+      OpenAL
+     # ${OPEN_AL_LIB_PATH}/OpenAL32.lib
+      )
 if(WIN32)
     add_custom_command(TARGET trim POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
