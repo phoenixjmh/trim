@@ -10,6 +10,7 @@
 
 /.cache
 .cache
+lib/glfw
 lib/OpenAL
 .vscode/
 *.sh
