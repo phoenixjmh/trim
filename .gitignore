@@ -10,3 +10,8 @@
 
 /.cache
 .cache
+lib/OpenAL
+.vscode/
+*.sh
+**.sh
+xbin/

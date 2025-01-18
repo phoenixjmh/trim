@@ -1,3 +1,1 @@
-mkdir -p bin
-cmake -S . -B bin
-cmake --build bin
+xcodebuild -project ~/proj/trim/bin/trim.xcodeproj -target trim
