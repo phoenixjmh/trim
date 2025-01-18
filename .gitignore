@@ -16,3 +16,4 @@ lib/OpenAL
 *.sh
 **.sh
 xbin/
+.DS_Store/
