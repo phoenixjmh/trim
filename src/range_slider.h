@@ -199,6 +199,7 @@ namespace ImGui
 
         // Display value using user-provided display format so user can add prefix/suffix/decorations to the value.
 
+//TODO: use our actual functions here.
         double v1_seconds =
             *v1 * (double)time_numerator / (double)time_denominator;
 

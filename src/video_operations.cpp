@@ -228,7 +228,6 @@ void ReadNextVideoFrame(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel
     auto CodecContext = stream_info.VideoCodecContext;
     auto Packet = stream_info.VideoPacket;
     auto Frame = stream_info.VideoFrame;
-    char err_buff[256];
 
 
     while (av_read_frame(FormatContext, Packet) >= 0)
@@ -314,8 +313,9 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
 
     // Get the closest keyframe for decoding purposes. Save the timestamp, and
     // nudge up to it
-    //CodecContext->thread_count = std::thread::hardware_concurrency();
-    //CodecContext->thread_type = FF_THREAD_FRAME;
+    CodecContext->thread_count = std::thread::hardware_concurrency();
+    CodecContext->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+
     // Clear decoder state before seeking
     avcodec_flush_buffers(CodecContext);
 
@@ -323,8 +323,6 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
     response =
         av_seek_frame(FormatContext, stream_info.VideoStreamIndex,
             timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);
-    /*av_seek_frame(FormatContext, stream_info.VideoStreamIndex,
-                  timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);*/
 
 
     if (response < 0)

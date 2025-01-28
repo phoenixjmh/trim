@@ -78,7 +78,10 @@ source_group("Headers" FILES ${HEADERS})
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 #set(CMAKE_INSTALL_RPATH "/home/phoenixjmh/proj/trim/lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/lib")
 
-add_executable(trim  ${SOURCES} ${VENDOR_SRC} ${HEADERS})
+add_executable(trim  ${SOURCES} ${VENDOR_SRC} ${HEADERS}
+        src/image_loader.cpp
+        src/image_loader.h
+        vendor/include/stbi_image.h)
 if(APPLE)
     list(APPEND EXTRA_LIBS
         "-framework OpenGL"

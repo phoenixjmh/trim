@@ -19,8 +19,8 @@ struct SystemCallParameters
 {
     uint32_t* trim_start;
     uint32_t* trim_end;
-    uint32_t startTimeSeconds;
-    uint32_t endTimeSeconds;
+    double startTimeSeconds;
+    double endTimeSeconds;
     char input_file [MAX_PATH_BYTES];
     char output_file[MAX_PATH_BYTES];
     char output_buffer[9000];
@@ -42,6 +42,7 @@ namespace GUI
     };
     struct GUIState
     {
+        int window_resolution;
         float dock_height;
         float dock_width;
         bool export_called = false;
@@ -53,6 +54,7 @@ namespace GUI
         bool play_pushed = false;
         double playback_timestamp_seconds;
         double video_audio_time_difference=0;
+        bool isPlaying=false;
     };
 
 }

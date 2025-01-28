@@ -1,4 +1,3 @@
-
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -9,56 +8,65 @@
 #include "video_operations.h"
 #include "gui.h"
 #include <glm/glm.hpp>
-#include <cmath>
-#include <iostream>
 #include "helpers.h"
+#include <format>
+
+#include "image_loader.h"
+
 namespace GUI
 {
-
-
-
-
-
-    void Initialize(GLFWwindow* window)
+    void Initialize(GLFWwindow *window)
     {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         auto io = &ImGui::GetIO();
-        io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-        io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-        io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
-        //io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
-        //io.ConfigViewportsNoAutoMerge = true;
-        //io.ConfigViewportsNoTaskBarIcon = true;
+        io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+        io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-        // Setup Dear ImGui style
         ImGui::StyleColorsDark();
-        //ImGui::StyleColorsLight();
 
-        // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-        ImGuiStyle& style = ImGui::GetStyle();
+        ImGuiStyle &style = ImGui::GetStyle();
         if (io->ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             style.WindowRounding = 0.0f;
             style.Colors[ImGuiCol_WindowBg].w = 1.0f;
         }
 
-        // Setup Platform/Renderer backends
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init();
+
+         float xscale, yscale;
+        int width,height;
+        glfwGetWindowSize(window,&width,&height);
+
+        glfwGetWindowContentScale(window, &xscale, &yscale);
+        int window_resolution = (float)height * yscale;
+
+        SetStyles(window_resolution);
+        //Init resources
+        PlayButton = LoadTexture("../res/play_button.png");
+        PauseButton = LoadTexture("../res/pause_button.png");
+        ZoomInButton = LoadTexture("../res/zoom_button.png");
+        ZoomOutButton = LoadTexture("../res/zoom_out_button.png");
+
+
+
+
+
     }
-
-
 
     void DockToBottom(ImGuiID dock_space)
     {
+
         static bool first_run = true;
         if (first_run)
         {
             first_run = false;
-            ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGuiViewport *viewport = ImGui::GetMainViewport();
             ImGui::DockBuilderRemoveNode(dock_space);
-            ImGui::DockBuilderAddNode(dock_space, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_DockSpace);
+            ImGui::DockBuilderAddNode(
+                dock_space, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_DockSpace);
             ImGui::DockBuilderSetNodeSize(dock_space, viewport->Size);
 
             // Split off the bottom section only
@@ -71,96 +79,171 @@ namespace GUI
         }
     }
 
-    void CreateInterface(GUIState& guiState, SystemCallParameters& callParams, const video_info& info)
+    ImVec2 GetCenterX(float panel_width, float item_width = 0)
     {
-        callParams.startTimeSeconds = *callParams.trim_start * (double)info.VideoTimeBase.num / (double)info.VideoTimeBase.den;
-        callParams.endTimeSeconds = *callParams.trim_end * (double)info.VideoTimeBase.num / (double)info.VideoTimeBase.den;
+        return ImVec2((panel_width * 0.5f) - (item_width * 0.5), ImGui::GetCursorPosY());
+    }
+
+    void CreateInterface(GUIState &guiState, SystemCallParameters &callParams, video_info &info)
+    {
+        callParams.startTimeSeconds = ToSeconds(*callParams.trim_start, info.VideoTimeBase);
+        callParams.endTimeSeconds = ToSeconds(*callParams.trim_end, info.VideoTimeBase);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGuiID dock_space = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+        ImGuiID dock_space =
+                ImGui::DockSpaceOverViewport(
+                    ImGui::GetMainViewport(),
+                    ImGuiDockNodeFlags_PassthruCentralNode
+                    | ImGuiDockNodeFlags_AutoHideTabBar);
 
         DockToBottom(dock_space);
 
         ImGui::Begin("Video Trimmer", nullptr, ImGuiWindowFlags_NoDecoration);
+
         guiState.dock_width = ImGui::GetWindowWidth();
         guiState.dock_height = ImGui::GetContentRegionAvail().y;
-        
-        if (ImGui::Button("Play", { 50,30 }))
+
+
+        static uint32_t slider_min;
+        static uint32_t slider_max;
+        static bool zoomedToRange = false;
+
+
+
+        //Timeline buttons
         {
-            guiState.play_pushed = !guiState.play_pushed;
+            int panel_width = 25 * 5;
+
+            const ImVec2 button_size = {15, 18};
+
+            ImVec2 windowCenter = GetCenterX(guiState.dock_width, panel_width);
+            ImGui::SetCursorPos(windowCenter);
+            if (ImGui::ImageButton("#zo", (void *) (intptr_t) ZoomOutButton.ID, button_size))
+            {
+                zoomedToRange = false;
+            }
+            ImGui::SameLine();
+
+
+            //Play Button
+
+            auto current_image = guiState.isPlaying ? PauseButton : PlayButton;
+            if (ImGui::ImageButton("#pb", (void *) (intptr_t) current_image.ID, button_size))
+            {
+                guiState.play_pushed = !guiState.play_pushed;
+            }
+
+            ImGui::SameLine();
+
+
+            if (ImGui::ImageButton("#zi", (void *) (intptr_t) ZoomInButton.ID, button_size))
+            {
+                zoomedToRange = true;
+                slider_min = *callParams.trim_start;
+                slider_max = *callParams.trim_end;
+            }
+            if (!zoomedToRange)
+            {
+                slider_min = 0;
+                slider_max = info.duration;
+            }
         }
-        ImGui::SameLine();
-        ImGui::Text("Time slip %0.3f",guiState.video_audio_time_difference);
-        ImGui::Text("%s",GetHumanTimeString(guiState.playback_timestamp_seconds).c_str());
-
-
-
-        
-
-        ImGui::Text("Trim Range Selection");
         ImGui::Separator();
 
+        //Playback timestamp
 
-        float fullWidth = ImGui::GetContentRegionAvail().x;
+        //Start end time
+        {
+
+            auto HumanTimeStart = GetHumanTimeString(callParams.startTimeSeconds).c_str();
+            auto HumanTimeEnd = GetHumanTimeString(callParams.endTimeSeconds).c_str();
+            auto HumanTimeCurrent = GetHumanTimeString(guiState.playback_timestamp_seconds).c_str();
+            auto TimeWidth = ImGui::CalcTextSize(HumanTimeStart).x;
+
+            ImGui::TextColored(ImVec4(0.2f, 0.2f, 1.f, 1.0f), "%s", HumanTimeStart); {
+                ImGui::SameLine();
+                const char *label = HumanTimeCurrent;
+                ImGui::SetCursorPosX((guiState.dock_width * 0.5) - (TimeWidth * 0.5));
+                ImGui::Text("%s", label);
+            }
+
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(guiState.dock_width - (TimeWidth + 10));
+            ImGui::TextColored(ImVec4(0.2f, 0.2f, 1.f, 1.0f), "%s", HumanTimeEnd);
+        }
 
 
-        ImGui::PushItemWidth(fullWidth);
+        // Timeline slider for video trimming
+        TimelineSlider(callParams, guiState, info, slider_min, slider_max);
 
-
-        TimelineSlider(callParams, guiState, info);
-
-
-        //end behavior of range slider
+        // End behavior of range slider
         ImGui::PopItemWidth();
-        ImGui::Text("Start Time: ");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", GetHumanTimeString(callParams.startTimeSeconds).c_str());
-
-        ImGui::SameLine(200);
-        ImGui::Text("End Time: ");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", GetHumanTimeString(callParams.endTimeSeconds).c_str());
 
 
-        ImGui::Separator();
-        ImGui::Checkbox("Preview output before export", &guiState.preview_output_command);
-        if (ImGui::Button("Export Video"))
+        //Export button
         {
-            guiState.export_called = true;
-            if (guiState.preview_output_command)
-                guiState.display_editor_popup = true;
+            ImVec2 ExportButtonSize={guiState.dock_width/5,guiState.dock_height/5};
+            ImGui::SetCursorPosX(guiState.dock_width * 0.5 - ExportButtonSize.x * 0.5);
+            if (ImGui::Button("Export Video",ExportButtonSize))
+            {
+                guiState.export_called = true;
+                if (guiState.preview_output_command)
+                    guiState.display_editor_popup = true;
+            }
         }
-
 
         EditCommandPopup(guiState, callParams);
 
+        //Stats panel
+        {
+            ImGui::Separator();
 
+            ImVec2 windowRight = ImVec2(guiState.dock_width, guiState.dock_height);
+            ImVec2 windowLeft = ImVec2(0, guiState.dock_height);
+            // Preview Checkbox
+            {
+                const char *cb_label = "Preview output before export";
+                ImVec2 cb_size = ImGui::CalcTextSize(cb_label);
 
+                ImGui::SetCursorPos(windowLeft);
+                ImGui::Checkbox("Preview output before export", &guiState.preview_output_command);
+                ImGui::SameLine();
+            }
 
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Adjust the sliders and click Export to save the trimmed video.");
+            auto io = ImGui::GetIO();
 
-        auto io = ImGui::GetIO();
-        ImGui::Separator();
-        ImGui::Text(" %.3f ms/frame (%.1f FPS)",
-            1000.0f / io.Framerate, io.Framerate);
+            // Show FPS and time difference stats at the bottom
+
+            auto fps_fmt_lbl= "%.3f ms/frame (%.1f FPS)";
+            auto ts_fmt_lbl = "Video Audio time difference: %.3f";
+            auto stats_width =
+                ImGui::CalcTextSize(fps_fmt_lbl).x
+            +   ImGui::CalcTextSize(ts_fmt_lbl).x
+            +   ImGui::CalcTextSize("0.0000").x;
+
+            ImVec2 infoStartPos = {windowRight.x - stats_width, windowRight.y};
+            ImGui::SetCursorPos(infoStartPos);
+            ImGui::Text(fps_fmt_lbl, 1000.0f / io.Framerate, io.Framerate);
+            ImGui::SameLine();
+            ImGui::Text(ts_fmt_lbl, guiState.video_audio_time_difference);
+        }
         ImGui::End();
         ImGui::Render();
+
     }
 
-
-    void EditCommandPopup(GUIState& state, SystemCallParameters& callParams)
+    void EditCommandPopup(GUIState &state, SystemCallParameters &callParams)
     {
         if (!state.display_editor_popup)
             return;
         ImGui::OpenPopup("Edit Command");
         if (ImGui::BeginPopupModal("Edit Command", nullptr, ImGuiWindowFlags_None))
         {
-
-            ImGui::InputTextMultiline("Final command", callParams.output_buffer, 1024, ImVec2(-1.0f, ImGui::GetTextLineHeight() * 16));
+            ImGui::InputTextMultiline("Final command", callParams.output_buffer, 1024,
+                                      ImVec2(-1.0f, ImGui::GetTextLineHeight() * 16));
             ImGui::Separator();
 
             if (ImGui::Button("Finalize & Export", ImVec2(200, 0)))
@@ -188,26 +271,36 @@ namespace GUI
         ImGui::UpdatePlatformWindows();
     }
 
-    void TimelineSlider(SystemCallParameters& callParams, GUIState& guiState, const video_info& info)
+    void TimelineSlider(
+        SystemCallParameters &callParams, GUIState &guiState, video_info &info,
+        uint32_t slider_min, uint32_t slider_max)
     {
+        //TODO: Zoom in to range?
+        float fullWidth = ImGui::GetContentRegionAvail().x;
+        ImGui::PushItemWidth(fullWidth);
+        ImGui::PushItemWidth(fullWidth);
+
+        //ImGui::ImageButton()
+
         ImGui::RangeSliderChangeType change_type = ImGui::RangeSliderChangeType::NONE;
-        //TODO:Unfuck this
+        // TODO:Unfuck this
         static double holdTimeSinceChange = 0;
         static double timeOfValueChange = 0;
         static bool HighPrecision = false;
         static bool slider_value_change = false;
-
         bool is_animating_slider = false;
 
-        //Smooth animation indicating precision mode
+        // Smooth animation indicating precision mode
         static float currentPadding = 5.0f;
         static float currentGrabSize = 20.0f;
         currentGrabSize = glm::mix(currentGrabSize, HighPrecision ? 5.0f : 20.0f, 0.15f);
         currentPadding = glm::mix(currentPadding, HighPrecision ? 10.0f : 5.0f, 0.15f);
 
-        //check animation state
+        // check animation state
         if (currentGrabSize > 6.0f && currentGrabSize < 19.0f)
             is_animating_slider = true;
+
+
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, currentPadding));
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, currentGrabSize);
@@ -217,10 +310,11 @@ namespace GUI
         if (ImGui::RangeSliderUInt(
             "Time Range",
             callParams.trim_start, callParams.trim_end,
-            0, info.duration, "%.2f", 1,
+            slider_min, slider_max, "%.2f", 1,
             change_type, info.VideoTimeBase.num, info.VideoTimeBase.den))
         {
             timeOfValueChange = ImGui::GetTime();
+            auto otherval = glfwGetTime();
         }
 
         if (ImGui::IsItemActivated())
@@ -230,7 +324,7 @@ namespace GUI
         }
         if (ImGui::IsItemActive())
         {
-            //How long is slider held, but stationary?
+            // How long is slider held, but stationary?
             holdTimeSinceChange = ImGui::GetTime() - timeOfValueChange;
             if (holdTimeSinceChange > 1.0)
             {
@@ -243,29 +337,27 @@ namespace GUI
             HighPrecision = false;
         }
 
+        ImGui::PopStyleVar(2); // Restore padding and grab size
 
-
-        ImGui::PopStyleVar(2);      // Restore padding and grab size
-
-        guiState.sliderState = (SliderState)change_type;
+        guiState.sliderState = (SliderState) change_type;
 
         if (!is_animating_slider && HighPrecision)
         {
             guiState.precision_seek = true;
-
-        }
-        else
+            std::cout << "Precision seek\n";
+        } else
         {
             guiState.precision_seek = false;
         }
-
     }
 
-
-    void SetStyles()
+    void SetStyles(float window_resolution)
     {
-        ImGuiIO& io = ImGui::GetIO();
-        ImVec4* colors = ImGui::GetStyle().Colors;
+        ImGuiIO &io = ImGui::GetIO();
+        ImVec4 *colors = ImGui::GetStyle().Colors;
+
+
+
         colors[ImGuiCol_Text] = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
         colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
         colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
@@ -322,7 +414,7 @@ namespace GUI
         colors[ImGuiCol_NavWindowingDimBg] = ImVec4(1.00f, 0.00f, 0.00f, 0.20f);
         colors[ImGuiCol_ModalWindowDimBg] = ImVec4(1.00f, 0.00f, 0.00f, 0.35f);
 
-        ImGuiStyle& style = ImGui::GetStyle();
+        ImGuiStyle &style = ImGui::GetStyle();
         style.WindowPadding = ImVec2(8.00f, 8.00f);
         style.FramePadding = ImVec2(5.00f, 2.00f);
         style.CellPadding = ImVec2(6.00f, 6.00f);
@@ -345,7 +437,20 @@ namespace GUI
         style.GrabRounding = 3;
         style.LogSliderDeadzone = 4;
         style.TabRounding = 4;
-        //io.Fonts->AddFontFromFileTTF("external/imgui/misc/fonts/Roboto-Medium.ttf", 13);
+
+
+
+
+
         ImGui::GetStyle().ScaleAllSizes(2.f);
+        //TODO: scale to screen resolution
+
+        float fontsize=window_resolution*0.014;
+
+        io.Fonts->AddFontFromFileTTF("../res/OpenSans.ttf",fontsize);
+
+        //ImGui::PushFont(OpenSans);
+
+        //ImGui::PopFont();
     }
 }

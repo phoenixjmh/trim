@@ -4,14 +4,14 @@
 #include "trim.h"
 #include "openAL.h"
 namespace fs = std::filesystem;
-// [ ]TODO: Apply the content scaling before hand, make the dock_size a non static non global.
-// [ ]TODO: Clean up the cmake shit for SURE.
-// [ ]TODO: Remove all these static variables probably
+//[ ]TODO: Apply the content scaling before hand, make the dock_size a non static non global.
+//[ ]TODO: Clean up the cmake shit for SURE.
+//[ ]TODO: Remove all these static variables probably
 
-
-//GUI RELATED
-// TODO: Precision mode is fucked up. 
-// TODO: Get ariel to sign off on changes to the GUI
+// GUI RELATED
+//[ ]: Get ariel to sign off on changes to the GUI
+//[ ]: Do an actual timer for our things that require a timer. Probably std::chrono?
+//[ ]: Either: Option to zoom the timeline | OR: Find a way to uncrowd the thing. 
 
 static glm::mat4 model(1.0f);
 
@@ -24,7 +24,6 @@ static bool Playback = false;
 static bool first_playback_frame;
 
 video_info info{};
-#define ALSOFT_LOGLEVEL 3
 const int ACCUMULATOR_SAMPLE_SIZE = 30;
 static double frametime_accumulator = 0;
 static int frame_accumulator = 0;
@@ -34,7 +33,7 @@ static bool has_audio_stream = true;
 static bool video_behind = false;
 static int dock_height = 0;
 
-double GetFPS(double last_frame_time,double source_fps)
+double GetFPS(double last_frame_time, double source_fps)
 {
 
     auto frame_start = glfwGetTime();
@@ -44,7 +43,7 @@ double GetFPS(double last_frame_time,double source_fps)
     {
         double ms = (double)frametime_accumulator / ACCUMULATOR_SAMPLE_SIZE;
         int FPS = floor(((double)ACCUMULATOR_SAMPLE_SIZE / (double)frametime_accumulator));
-         printf("OUTPUT: FPS=>%d  | Native: %d\n", FPS, (int)source_fps);
+        printf("OUTPUT: FPS=>%d  | Native: %d\n", FPS, (int)source_fps);
         frame_accumulator = 0;
         frametime_accumulator = 0;
     }
@@ -80,7 +79,6 @@ int main(int argc, char *argv[])
     GLFWwindow *window = InitGL();
 
     GUI::Initialize(window);
-    GUI::SetStyles();
 
     if (!OpenVideoStream(callParams.input_file, video_stream_info))
     {
@@ -161,10 +159,10 @@ int main(int argc, char *argv[])
                 CloseVideoStream(video_stream_info);
                 exit(1);
             }
-            OpenAL::PauseAudioSamples(buffers,source,BUFFER_COUNT);
+            OpenAL::PauseAudioSamples(buffers, source, BUFFER_COUNT);
 
-            Playback=false;
-            first_playback_frame=true;
+            Playback = false;
+            first_playback_frame = true;
             break;
         }
         case GUI::SliderState::SECOND_VALUE_CHANGED:
@@ -176,9 +174,9 @@ int main(int argc, char *argv[])
                 CloseVideoStream(video_stream_info);
                 exit(1);
             }
-            OpenAL::PauseAudioSamples(buffers,source,BUFFER_COUNT);
-            Playback=false;
-            first_playback_frame=true;
+            OpenAL::PauseAudioSamples(buffers, source, BUFFER_COUNT);
+            Playback = false;
+            first_playback_frame = true;
 
             break;
         }
@@ -191,23 +189,29 @@ int main(int argc, char *argv[])
             Playback = !Playback;
             guiState.play_pushed = false;
             if (Playback)
+            {
                 first_playback_frame = true;
-            glfwSetTime(0.0);
+                guiState.isPlaying=true;
+            }
+            else
+                guiState.isPlaying=false;
+            if (!has_audio_stream)
+                glfwSetTime(0.0);
         }
 
         if (Playback)
         {
             double video_native_fps = info.frame_rate.num / info.frame_rate.den;
 
-            //TODO: Make sure this works actually not sure if this works...
+            // TODO: Make sure this works actually not sure if this works...
             auto start_time = *callParams.trim_start;
             auto end_time = *callParams.trim_end;
 
             if (!has_audio_stream)
             {
-                timestamp = start_time + ToPTS(glfwGetTime(),info.VideoTimeBase);
+                timestamp = start_time + ToPTS(glfwGetTime(), info.VideoTimeBase);
                 bool got_frame = false;
-                //TODO: Add the fix from below. Get the assumed next frame time, and only push a frame when glfwGetTime overshoots that frame
+                // TODO: Add the fix from below. Get the assumed next frame time, and only push a frame when glfwGetTime overshoots that frame
                 if (timestamp < end_time)
                     ReadNextVideoFrame(timestamp, video_stream_info, pixel_data);
             }
@@ -217,51 +221,50 @@ int main(int argc, char *argv[])
 
                 if (first_playback_frame)
                 {
-                    //Get audio pts of video_pts
+                    // Get audio pts of video_pts
                     double audio_num = info.AudioTimeBase.num;
                     double audio_den = info.AudioTimeBase.den;
-                    double video_seconds=ToSeconds(start_time,info.VideoTimeBase);
-                    uint32_t audio_pts=ToPTS(video_seconds,info.AudioTimeBase);
-                    double audio_seconds=ToSeconds(audio_pts,info.AudioTimeBase);
+                    double video_seconds = ToSeconds(start_time, info.VideoTimeBase);
+                    uint32_t audio_pts = ToPTS(video_seconds, info.AudioTimeBase);
+                    double audio_seconds = ToSeconds(audio_pts, info.AudioTimeBase);
 
                     samples_read = ReadInitialAudioFrame(audio_pts, video_stream_info, audio_data);
-                    if(samples_read<=0)
+                    if (samples_read <= 0)
                     {
                         LOGD("Failed to read audio samples in playback");
                         exit(1);
                     }
-                    timestamp = ToPTS(audio_seconds,info.VideoTimeBase);
+                    timestamp = ToPTS(audio_seconds, info.VideoTimeBase);
                     if (!ReadFrameSeek(timestamp, video_stream_info, pixel_data, true))
-                            {
-                                LOGD("Failed initial seek on playback");
-                            } 
-                    first_playback_frame=false;
-                    printf("Reading audio at %f s and video at %f s\n",audio_seconds,video_seconds);
-                   
+                    {
+                        LOGD("Failed initial seek on playback");
+                    }
+                    first_playback_frame = false;
+                    printf("Reading audio at %f s and video at %f s\n", audio_seconds, video_seconds);
                 }
 
                 if (timestamp < end_time)
                 {
-                    //Play audio first, and sync video to it. 
-                    //This function modifies the current_audio_pts, which we use to sync
-                    OpenAL::PlayAudioSamples(video_stream_info, samples_read, audio_data, BUFFER_COUNT, buffers, source,video_behind);
+                    // Play audio first, and sync video to it.
+                    // This function modifies the current_audio_pts, which we use to sync
+                    OpenAL::PlayAudioSamples(video_stream_info, samples_read, audio_data, BUFFER_COUNT, buffers, source, video_behind);
 
-                    double video_frame_output_time = GetFPS(last_video_frame_time,video_native_fps);
-                   
-                    double audio_seconds = ToSeconds(OpenAL::audio_current_pts,info.AudioTimeBase);
+                    double video_frame_output_time = GetFPS(last_video_frame_time, video_native_fps);
 
-                    timestamp =  ToPTS(audio_seconds,info.VideoTimeBase);
+                    double audio_seconds = ToSeconds(OpenAL::audio_current_pts, info.AudioTimeBase);
+
+                    timestamp = ToPTS(audio_seconds, info.VideoTimeBase);
 
                     // Calculate the pts of the next frame, and get that timestamp.
-                    uint32_t frame_time_pt = ToPTS(1,info.frame_rate);
-                    double next_frame_seconds = ToSeconds(video_stream_info.last_video_pts+frame_time_pt,info.VideoTimeBase);
-                    double timestamp_seconds = ToSeconds(timestamp,info.VideoTimeBase);
+                    uint32_t frame_time_pt = ToPTS(1, info.frame_rate);
+                    double next_frame_seconds = ToSeconds(video_stream_info.last_video_pts + frame_time_pt, info.VideoTimeBase);
+                    double timestamp_seconds = ToSeconds(timestamp, info.VideoTimeBase);
 
                     // Use that timestamp and sync to audio.
                     auto slip = abs(next_frame_seconds - timestamp_seconds);
-                    auto slip_pts = ToPTS(slip,info.VideoTimeBase); 
+                    auto slip_pts = ToPTS(slip, info.VideoTimeBase);
                     double acceptable_slip = 0.04;
-                    
+
                     // If the audio and video timestamps are within 0.04 seconds of eachother, read the frame
                     if (slip < acceptable_slip)
                     {
@@ -297,7 +300,7 @@ int main(int argc, char *argv[])
                             {
                                 printf("Failed seeking to %f\n", audio_seconds);
                             }
-                            printf("Seeking video to %f\n", ToSeconds((double)video_stream_info.last_video_pts,info.VideoTimeBase)); 
+                            printf("Seeking video to %f\n", ToSeconds((double)video_stream_info.last_video_pts, info.VideoTimeBase));
                         }
                     }
                     guiState.video_audio_time_difference = slip;
@@ -305,10 +308,11 @@ int main(int argc, char *argv[])
 
                 else
                 {
-                    // Reset playback
-                    glfwSetTime(0.0);
+                    // Reset playback if not audio
+                    if (!has_audio_stream)
+                        glfwSetTime(0.0);
                 }
-                guiState.playback_timestamp_seconds = ToSeconds(timestamp,info.VideoTimeBase);
+                guiState.playback_timestamp_seconds = ToSeconds(timestamp, info.VideoTimeBase);
             }
         }
 
@@ -330,6 +334,7 @@ int main(int argc, char *argv[])
             glfwGetWindowContentScale(window, &xscale, &yscale);
             int scaled_width = render_window_width * xscale;
             int scaled_height = render_window_height * yscale;
+            guiState.window_resolution=scaled_height;
             CreateVideoSurface(info, scaled_width, scaled_height, xscale, yscale);
             renderFirstFrame = false;
         }
