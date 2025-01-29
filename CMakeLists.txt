@@ -109,7 +109,7 @@ if(UNIX AND NOT APPLE)
       find_library(libswresample_path NAMES libswresample.so.5 PATHS "${FFMPEG_LIB_PATH}/")
 
 
-      find_library(libavcodecpath NAMES libavcodec.so PATHS "/home/phoenixjmh/proj/trim/lib/FFMpeg/PlatformLinux/ffmpeg_shared_linux/lib/")
+      find_library(libavcodecpath NAMES libavcodec.so PATHS "ABSOLUTE PATH TO LIBAV HERE")
 
 
       # Specify linker language
