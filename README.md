@@ -34,7 +34,13 @@ Trim requires the **LIBAV** libraries from `ffmpeg-devel` and additional depende
 Clone the repository and initialize submodules:
 
 ```sh
+git clone https://github.com/phoenixjmh/trim 
 git submodule update --init --recursive
 cmake -S . -B build
 cmake --build build
 
+```
+## Usage
+ Once trim is added to the PATH
+```sh
+./trim [inputfile.extension] [OPTIONAL[outputfile.extension]]
