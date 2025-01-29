@@ -1,38 +1,40 @@
-# trim
-## About: Video trimmer with the sole purpose of being as lightweight as possible. 
+# Trim
 
-The program is called as a CLI tool, recieving the desired video to edit as an argument.
-Calling the tool will launch a GUI window, allowing you to trim the video.
-Launch time is instantaneous even for large videos.
-Under the hood, the program simply acts as a GUI extension of one single function of ffmpeg, allowing a visual based trim operation.
-In the case that the user wants to use this tool as the 'trimming' part of a larger ffmpeg command, There is the provided option to display exactly what ffmpeg command will be sent before finalizing with the export button.
+## About
 
+**Trim** is a lightweight video trimmer designed for speed and simplicity.  
 
+It runs as a CLI tool, accepting a video file as an argument. Once launched, a GUI window appears, allowing users to visually trim the video.  
+- **Instant launch**, even for large videos  
+- Acts as a GUI extension for a single `ffmpeg` function  
+- Users can preview the exact `ffmpeg` command before exporting, making it easy to integrate into larger workflows  
 
-How it works:
-  User can stop moving the slider while holding to enter a more precise seeking mode
-  The timeline is zoomable.
-  
+### Features
+- **Precision Seeking**: Stop moving the slider while holding to enter precise seeking mode  
+- **Zoomable Timeline**: Adjust zoom level for better navigation  
 
+## Dependencies
 
-### Dependencies
-The project requires the LIBAV libraries provided by ffmpeg-devel.
-* Windows: DLL's are prebundled with the repo
+Trim requires the **LIBAV** libraries from `ffmpeg-devel` and additional dependencies:
 
+- **Windows**: Prebundled DLLs  
+- **Mac**: Install via your preferred package manager  
+- **Linux**:  
+  - CMake file (`lib/FFMPEG/CMakeLists.txt`) needs updating to include **all UNIX systems**, not just macOS  
+  - `.so` dependencies have hardcoded paths, so package manager installation is recommended  
 
-* (Mac)use the package manager of your choice to download the libav libraries provided by ffmpeg.
-  
-* (Linux): The cmake file is currently under construction, bundling the libav libraries here is more difficult, as the .so's have hardcoded dependency paths. Simple fix, remove the dependency and transfer it to the package manager. I'm lacking a linux machine at the moment. lib/FFMPEG/CMakeLists.txt => Changing this to include ALL unix and not just apple is likely the solution.
+### Required Libraries
+- **GLFW**  
+- **Dear ImGui**  
+- **OpenAL**  
+- **FFmpeg development libraries**  
 
-The program uses OpenGL, DearImGui,OpenAL, and ffmpeg developement libraries.
+## Building from Source
 
-Cmake build:
-  After cloning the repo, pull git submodules:
-  """git submodule update --init --recursive"""
+Clone the repository and initialize submodules:
 
-from the root directory of the project:
-    cmake -S . -B build
-    
+```sh
+git submodule update --init --recursive
+cmake -S . -B build
+cmake --build build
 
-Builds on mac, windows, linux.
-  
