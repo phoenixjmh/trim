@@ -11,7 +11,7 @@ In the case that the user wants to use this tool as the 'trimming' part of a lar
 
 How it works:
   User can stop moving the slider while holding to enter a more precise seeking mode
-  The timeline is zoomable
+  The timeline is zoomable.
   
 
 
@@ -20,10 +20,11 @@ The project requires the LIBAV libraries provided by ffmpeg-devel.
 * Windows: DLL's are prebundled with the repo
 
 
-*Mac and Linux: 
-use the package manager of your choice to download the libav libraries provided by ffmpeg.
+* (Mac)use the package manager of your choice to download the libav libraries provided by ffmpeg.
   
+* (Linux): The cmake file is currently under construction, bundling the libav libraries here is more difficult, as the .so's have hardcoded dependency paths. Simple fix, remove the dependency and transfer it to the package manager. I'm lacking a linux machine at the moment. lib/FFMPEG/CMakeLists.txt => Changing this to include ALL unix and not just apple is likely the solution.
 
+The program uses OpenGL, DearImGui,OpenAL, and ffmpeg developement libraries.
 
 Cmake build:
   After cloning the repo, pull git submodules:
