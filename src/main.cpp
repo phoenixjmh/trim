@@ -4,14 +4,7 @@
 #include "trim.h"
 #include "openAL.h"
 namespace fs = std::filesystem;
-//[ ]TODO: Apply the content scaling before hand, make the dock_size a non static non global.
-//[ ]TODO: Clean up the cmake shit for SURE.
-//[ ]TODO: Remove all these static variables probably
 
-// GUI RELATED
-//[ ]: Get ariel to sign off on changes to the GUI
-//[ ]: Do an actual timer for our things that require a timer. Probably std::chrono?
-//[ ]: Either: Option to zoom the timeline | OR: Find a way to uncrowd the thing. 
 
 static glm::mat4 model(1.0f);
 
