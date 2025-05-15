@@ -24,7 +24,7 @@ if(WIN32)
 	file(COPY ${FFMPEG_DLLS} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/../../bin/Debug")
 	file(COPY ${FFMPEG_DLLS} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/../../bin/Release")
 	
-elseif(APPLE)
+else()
 # Set PKG_CONFIG_PATH to include the local FFmpeg pkgconfig directory
 find_package(PkgConfig REQUIRED)
 
