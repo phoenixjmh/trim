@@ -97,7 +97,7 @@ void PrintAVError(int response,const char* message)
 
 bool OpenVideoStream(const char* input_file, AVStreamInfo& stream_info)
 {
-    // av_log_set_level(AV_LOG_DEBUG);  // Set to AV_LOG_DEBUG for detailed output
+    av_log_set_level(AV_LOG_DEBUG);  // Set to AV_LOG_DEBUG for detailed output
 
     AVFormatContext* pFormatContext = avformat_alloc_context();
     AVCodecContext* pCodecContext = nullptr;
@@ -301,8 +301,11 @@ void ReadNextVideoFrame(int timestamp, AVStreamInfo& stream_info, uint8_t* pixel
     stream_info.last_video_pts = Frame->pts;
 }
 bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
+                   //TODO Doesn't Even Get here?
     uint8_t* pixel_data, bool precision_mode)
 {
+    std::cout<<"Entering ReadFrameSeek";
+
     auto FormatContext = stream_info.VideoFormatContext;
     auto CodecContext = stream_info.VideoCodecContext;
     auto Packet = stream_info.VideoPacket;
@@ -384,6 +387,7 @@ bool ReadFrameSeek(int timestamp, AVStreamInfo& stream_info,
         sws_scale(sws_context, Frame->data, Frame->linesize, 0, Frame->height,
             dest, dest_linesize);
 
+        std::cout<<"Processed Frame";
 
         break;
     }

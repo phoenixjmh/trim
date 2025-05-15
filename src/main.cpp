@@ -145,6 +145,8 @@ int main(int argc, char *argv[])
         {
         case GUI::SliderState::FIRST_VALUE_CHANGED:
         {
+            std::cout<<"First value change triggered\n";
+
             if (!ReadFrameSeek(*callParams.trim_start, video_stream_info,
                                pixel_data, guiState.precision_seek))
             {

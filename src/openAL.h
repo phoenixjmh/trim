@@ -27,27 +27,60 @@ namespace OpenAL
 
         return true;
     }
+
     void PauseAudioSamples(ALuint *buffers, const int BUFFER_COUNT, ALuint source)
     {
-
-        ALint queued, processed;
-        alGetSourcei(source, AL_BUFFERS_QUEUED, &queued);
-        alGetSourcei(source, AL_BUFFERS_PROCESSED, &processed);
-
-        while (processed > 0)
-        {
-            ALuint buffer;
-            alSourceUnqueueBuffers(source, 1, &buffer);
-            processed --;
-        }
         alSourceStop(source);
+        ALenum error = alGetError();
+        if (error != AL_NO_ERROR)
+        {
+            if (error == AL_INVALID_NAME) return;
+        }
+
+        ALint queued = 0;
+        ALint processed = 0;
+
+        alGetSourcei(source, AL_BUFFERS_QUEUED, &queued);
+        error = alGetError();
+        if (error != AL_NO_ERROR)
+        {
+            if (error == AL_INVALID_NAME) return;
+            queued = 0;
+        }
+
+        alGetSourcei(source, AL_BUFFERS_PROCESSED, &processed);
+        error = alGetError();
+        if (error != AL_NO_ERROR)
+        {
+            if (error == AL_INVALID_NAME) return;
+            processed = 0;
+        }
+
+        if (processed > 0)
+        {
+            ALuint temp_buffer_id;
+            int unqueue_count = processed;
+            for (int i = 0; i < unqueue_count; ++i)
+            {
+                alSourceUnqueueBuffers(source, 1, &temp_buffer_id);
+                error = alGetError();
+                if (error != AL_NO_ERROR)
+                {
+                    break;
+                }
+            }
+        }
 
         ALint state;
-        alGetSourcei(source,AL_SOURCE_STATE,&state);
-        assert(state!=AL_PLAYING);
-        alSourcei(source, AL_BUFFER, 0);
-        first_run=true;
+        alGetSourcei(source, AL_SOURCE_STATE, &state);
+        error = alGetError();
+        if (error == AL_NO_ERROR)
+        {
+
+        }
     }
+
+
     void PlayAudioSamples(AVStreamInfo &video_stream_info, int num_samples, int16_t *audio_data, const int BUFFER_COUNT, ALuint *buffers, ALuint source, bool video_behind)
     {
 
